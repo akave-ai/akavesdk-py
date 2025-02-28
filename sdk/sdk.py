@@ -10,7 +10,6 @@ from private.encryption import derive_key
 from typing import List, Optional
 from multiformats import cid
 
-
 BLOCK_SIZE = 1 * Size.MB
 ENCRYPTION_OVERHEAD = 28  # 16 bytes for AES-GCM tag, 12 bytes for nonce
 MIN_BUCKET_NAME_LENGTH = 3
@@ -82,6 +81,21 @@ class SDK:
         response = self.client.bucket_create(nodeapi_pb2_grpc.NodeAPIStub.BucketCreate(name=name))
         return BucketCreateResult(name=response.name, created_at=response.created_at)
 
+    def list_buckets(self):
+        # Call to gRPC API
+        try:
+            response = self.client.bucket_list(nodeapi_pb2_grpc.NodeAPIStub.BucketListRequest())
+        except SDKError as err:
+            logging.error(f"Error listing buckets: {err}")
+            return []
+
+        buckets = [
+            Bucket(name=bucket.name, created_at=bucket.created_at)
+            for bucket in response.buckets
+        ]
+
+        return buckets
+
     def view_bucket(self, name: str):
         if name == "":
             raise SDKError("Invalid bucket name")
@@ -97,8 +111,6 @@ class SDK:
        except SDKError as err:
               logging.error(f"Error deleting bucket: {err}")
               return False
-       
-   
 
     def extract_block_data(id_str: str, data: bytes) -> bytes:
         try:
@@ -109,14 +121,14 @@ class SDK:
         if block_cid.codec == "dag-pb":
           try:
             dag_node = ipfshttpclient.codec.decode("dag-pb", data) #Decoding the DAG node
-            unixfs_data = dag_node["Data"] 
+            unixfs_data = dag_node["Data"]
             return unixfs_data
           except Exception as e:
             raise ValueError(f"Failed to decode DAG node: {e}")
-    
+
         elif block_cid.codec == "raw":
-         return data 
-     
+         return data
+
         else:
          raise ValueError(f"Unknown CID type: {block_cid.codec}")
 
