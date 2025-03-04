@@ -1,4 +1,3 @@
-import io
 import numpy as np
 from reedsolo import RSCodec, ReedSolomonError
 
@@ -9,25 +8,55 @@ class ErasureCode:
 
         self.data_blocks = data_blocks
         self.parity_blocks = parity_blocks
-        self.encoder = RSCodec(parity_blocks * 2)  
+        self.total_blocks = data_blocks + parity_blocks
+        self.encoder = RSCodec(parity_blocks * 2)
 
-    def encode(self, data: bytes) -> bytes:
+    def encode(self, data: bytes) -> list:
+        """Splits data into shards, encodes them, and returns encoded shards."""
         try:
             shards = np.array_split(data, self.data_blocks)
-            encoded_shards = [self.encoder.encode(shard.tobytes()) for shard in shards]
+            shards = [shard.tobytes() for shard in shards]
 
-            return b"".join(encoded_shards)
+            max_shard_size = max(len(shard) for shard in shards)
+            shards = [shard.ljust(max_shard_size, b'\0') for shard in shards]
+
+            encoded_shards = [self.encoder.encode(shard) for shard in shards]
+
+            return encoded_shards
         except ReedSolomonError as e:
             raise RuntimeError(f"Erasure coding failed: {str(e)}")
 
-    def extract_data(self, encoded_data: bytes, original_data_size: int) -> bytes:
-        """Extracts the original data from encoded data."""
+    def verify(self, encoded_shards: list) -> bool:
+        """Verifies if encoded shards are correct."""
         try:
-            shard_size = original_data_size // self.data_blocks
-            shards = [encoded_data[i : i + shard_size + self.parity_blocks * 2] for i in range(0, len(encoded_data), shard_size + self.parity_blocks * 2)]
+            for shard in encoded_shards:
+                self.encoder.decode(shard, only_erasures=True)  
+            return True
+        except ReedSolomonError:
+            return False  
 
-            decoded_shards = [self.encoder.decode(shard) for shard in shards]
+    def reconstruct(self, encoded_shards: list) -> list:
+        """Attempts to reconstruct missing/corrupted shards."""
+        try:
+            recovered_shards = []
+            for shard in encoded_shards:
+                try:
+                    recovered_shards.append(self.encoder.decode(shard))  
+                except ReedSolomonError:
+                    recovered_shards.append(b'\0' * len(shard))  
 
-            return b"".join(decoded_shards)[:original_data_size]  
+            return recovered_shards
         except ReedSolomonError as e:
-            raise RuntimeError(f"Data reconstruction failed: {str(e)}")
+            raise RuntimeError(f"Reconstruction failed: {str(e)}")
+
+    def extract_data(self, encoded_shards: list, original_data_size: int) -> bytes:
+        """Extracts the original data from encoded shards, verifying and reconstructing if needed."""
+        if not self.verify(encoded_shards):
+            encoded_shards = self.reconstruct(encoded_shards)
+
+        try:
+            decoded_shards = [self.encoder.decode(shard) for shard in encoded_shards]
+
+            return b"".join(decoded_shards)[:original_data_size]
+        except ReedSolomonError as e:
+            raise RuntimeError(f"Data extraction failed: {str(e)}")
