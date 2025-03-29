@@ -20,6 +20,11 @@ from .sdk_ipc import IPC
 from .sdk_streaming import StreamingAPI
 from .erasure_code import ErasureCode
 
+class Bucket:
+    def __init__(self, name: str, created_at: Timestamp):
+        self.name = name
+        self.created_at = created_at
+
 class SDKError(Exception):
     pass
 
@@ -97,8 +102,33 @@ class SDK:
        except SDKError as err:
               logging.error(f"Error deleting bucket: {err}")
               return False
-       
-   
+
+    def list_buckets(self) -> List[Bucket]:
+        """
+        Returns a list of all buckets available in the network.
+        
+        Returns:
+            List[Bucket]: A list of Bucket objects containing bucket names and creation timestamps.
+            
+        Raises:
+            SDKError: If there's an error communicating with the server.
+        """
+        try:
+            # Call to gRPC API
+            response = self.client.bucket_list(nodeapi_pb2_grpc.NodeAPIStub.BucketList())
+            
+            # Convert response to list of Bucket objects
+            buckets = []
+            for bucket in response.buckets:
+                buckets.append(Bucket(
+                    name=bucket.name,
+                    created_at=bucket.created_at
+                ))
+            return buckets
+            
+        except Exception as e:
+            logging.error(f"Error listing buckets: {e}")
+            raise SDKError(f"Failed to list buckets: {str(e)}")
 
     def extract_block_data(id_str: str, data: bytes) -> bytes:
         try:
@@ -122,11 +152,6 @@ class SDK:
 
 
 class BucketCreateResult:
-    def __init__(self, name: str, created_at: Timestamp):
-        self.name = name
-        self.created_at = created_at
-
-class Bucket:
     def __init__(self, name: str, created_at: Timestamp):
         self.name = name
         self.created_at = created_at

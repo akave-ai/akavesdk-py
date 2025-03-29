@@ -58,6 +58,51 @@ class TestSDK(unittest.TestCase):
         result = self.sdk.delete_bucket("test_bucket")
         self.assertIsNone(result)
 
+    def test_list_buckets_success(self):
+        # Create mock response with multiple buckets
+        mock_response = MagicMock()
+        mock_bucket1 = MagicMock()
+        mock_bucket1.name = "bucket1"
+        mock_bucket1.created_at = Timestamp()
+        mock_bucket2 = MagicMock()
+        mock_bucket2.name = "bucket2"
+        mock_bucket2.created_at = Timestamp()
+        mock_response.buckets = [mock_bucket1, mock_bucket2]
+        
+        self.mock_client.bucket_list.return_value = mock_response
+
+        # Call list_buckets
+        buckets = self.sdk.list_buckets()
+
+        # Verify results
+        self.assertEqual(len(buckets), 2)
+        self.assertEqual(buckets[0].name, "bucket1")
+        self.assertEqual(buckets[1].name, "bucket2")
+        self.assertIsInstance(buckets[0].created_at, Timestamp)
+        self.assertIsInstance(buckets[1].created_at, Timestamp)
+
+    def test_list_buckets_empty(self):
+        # Create mock response with no buckets
+        mock_response = MagicMock()
+        mock_response.buckets = []
+        
+        self.mock_client.bucket_list.return_value = mock_response
+
+        # Call list_buckets
+        buckets = self.sdk.list_buckets()
+
+        # Verify results
+        self.assertEqual(len(buckets), 0)
+        self.assertIsInstance(buckets, list)
+
+    def test_list_buckets_error(self):
+        # Mock gRPC error
+        self.mock_client.bucket_list.side_effect = grpc.RpcError("Server error")
+
+        # Verify that SDKError is raised
+        with self.assertRaises(SDKError):
+            self.sdk.list_buckets()
+
     def test_encryption_key_derivation(self):
         key = encryption_key_derivation(b"parent_key", "info1", "info2")
         self.assertIsNotNone(key)
