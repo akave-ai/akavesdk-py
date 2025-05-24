@@ -10,6 +10,7 @@ env/
 ENV/
 env.bak/
 venv.bak/
+NOTES
 
 # Distribution / packaging
 .Python

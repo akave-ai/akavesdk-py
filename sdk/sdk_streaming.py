@@ -197,13 +197,17 @@ class StreamingAPI:
     Exposes SDK file streaming API in Python.
     This is the Python equivalent of the Go StreamingAPI.
     """
-    def __init__(self, conn: grpc.Channel, client: Any,
-                 erasure_code: Optional[ErasureCode] = None, 
-                 max_concurrency: int = 10,
-                 block_part_size: int = 1024 * 1024, 
-                 use_connection_pool: bool = True,
-                 encryption_key: Optional[bytes] = None, 
-                 max_blocks_in_chunk: int = 32):
+    def __init__(
+            self, 
+            conn: grpc.Channel, 
+            client: Any,
+            erasure_code: Optional[ErasureCode] = None, 
+            max_concurrency: int = 10,
+            block_part_size: int = 1024 * 1024, 
+            use_connection_pool: bool = True,
+            encryption_key: Optional[bytes] = None, 
+            max_blocks_in_chunk: int = 32
+        ):
         """
         Initialize a new StreamingAPI instance.
         
