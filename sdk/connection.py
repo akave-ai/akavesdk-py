@@ -1,14 +1,14 @@
 import grpc
 import threading
 from ..private.pb import nodeapi_pb2_grpc, ipcnodeapi_pb2_grpc
-from typing import Optional, Callable, Tuple
+from typing import Optional, Callable, Tuple, Dict
 
 
 class ConnectionPool:
     def __init__(self):
-        self._lock = threading.RLock()
-        self._connections = {}
-        self.use_connection_pool = False
+        self._lock : threading.RLock = threading.RLock()
+        self._connections: Dict[str, grpc.Channel]  = {}
+        self.use_connection_pool: bool = False
 
     def create_client(self, addr: str, pooled: bool) -> Tuple[Optional[nodeapi_pb2_grpc.NodeAPIStub], Optional[Callable[[], None]], Optional[Exception]]:
         if pooled:
