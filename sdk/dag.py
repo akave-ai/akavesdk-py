@@ -16,9 +16,9 @@ DEFAULT_HASH_FUNC = "sha2-256"
 
 class DAGRoot:
     
-    def __init__(self):
-        self.links = []  # Format: [PBLink objects]
-        self.data_size = 0  # Total raw data size
+    def __init__(self) -> None:
+        self.links: List[PBLink] = []  # Format: [PBLink objects]
+        self.data_size: int = 0  # Total raw data size
         
     def add_link(self, cid_str: str, raw_data_size: int, proto_node_size: int) -> None:
         self.data_size += raw_data_size
@@ -28,7 +28,7 @@ class DAGRoot:
         link = PBLink(
             name="",  
             size=proto_node_size,
-            cid=cid_obj
+            hash=cid_obj
         )
         
         self.links.append(link)
@@ -39,7 +39,8 @@ class DAGRoot:
             
         if len(self.links) == 1:
             # If there's only one link, just return its CID
-            return str(self.links[0].cid)
+            # Note: Here hash is actually the CID of the single node
+            return str(self.links[0].hash)
             
         root_node = PBNode(data=None, links=self.links)
         encoded_node = encode(root_node)
@@ -55,7 +56,7 @@ class ChunkDAG:
     blocks: List[FileBlockUpload]
 
 def chunk_data(reader: BinaryIO, block_size: int) -> List[bytes]:
-    chunks = []
+    chunks: List[bytes] = []
     while True:
         chunk = reader.read(block_size)
         if not chunk:
@@ -64,22 +65,22 @@ def chunk_data(reader: BinaryIO, block_size: int) -> List[bytes]:
     return chunks
 
 def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[bytes] = None) -> ChunkDAG:
-    chunks = chunk_data(reader, block_size)
-    blocks = []
-    
-    total_raw_size = 0
-    total_proto_size = 0
-    
-    for i, chunk_data in enumerate(chunks):
+    chunks: List[bytes] = chunk_data(reader, block_size)
+    blocks: List[FileBlockUpload] = []
+
+    total_raw_size: int = 0
+    total_proto_size: int = 0
+
+    for i, chunk in enumerate(chunks):
         if enc_key:
             nonce = os.urandom(12)
-            chunk_data = encrypt(enc_key, chunk_data, nonce)
+            chunk = encrypt(enc_key, chunk, nonce)
         
-        node = PBNode(data=chunk_data)
+        node = PBNode(data=chunk)
         encoded_node = encode(node)
         digest = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
         block_cid = CID("base32", DEFAULT_CID_VERSION, code, digest)
-        chunk_size = len(chunk_data)
+        chunk_size = len(chunk)
         total_raw_size += chunk_size
         total_proto_size += len(encoded_node)
         blocks.append(FileBlockUpload(
