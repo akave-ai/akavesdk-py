@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+pyproject.toml
+poetry.lock
 # Virtual environment directories
 venv/
 env/

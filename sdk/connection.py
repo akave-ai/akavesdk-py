@@ -1,6 +1,7 @@
 import grpc
 import threading
 from ..private.pb import nodeapi_pb2_grpc, ipcnodeapi_pb2_grpc
+from typing import Optional, Callable, Tuple
 
 
 class ConnectionPool:
@@ -9,7 +10,7 @@ class ConnectionPool:
         self._connections = {}
         self.use_connection_pool = False
 
-    def create_client(self, addr: str, pooled: bool):
+    def create_client(self, addr: str, pooled: bool) -> Tuple[Optional[nodeapi_pb2_grpc.NodeAPIStub], Optional[Callable[[], None]], Optional[Exception]]:
         if pooled:
             conn = self.get(addr)
             if conn is None:
@@ -21,7 +22,7 @@ class ConnectionPool:
             return None, None, Exception("Failed to create connection")
         return nodeapi_pb2_grpc.NodeAPIStub(conn), lambda: conn.close(), None
 
-    def create_ipc_client(self, addr: str, pooled: bool):
+    def create_ipc_client(self, addr: str, pooled: bool) -> Tuple[Optional[ipcnodeapi_pb2_grpc.IPCNodeAPIStub], Optional[Callable[[], None]], Optional[Exception]]:
         if pooled:
             conn = self.get(addr)
             if conn is None:
@@ -33,11 +34,18 @@ class ConnectionPool:
             return None, None, Exception("Failed to create connection")
         return ipcnodeapi_pb2_grpc.IPCNodeAPIStub(conn), lambda: conn.close(), None
 
-    def get(self, addr: str):
+    def get(self, addr: str) -> Optional[grpc.Channel]:
+        """Retrieves an existing gRPC connection from the pool."""
+        if not addr:
+            return None
+        # Use a lock to ensure thread-safe access to the connections dictionary
         with self._lock:
             return self._connections.get(addr)
 
-    def _new_connection(self, addr: str):
+    def _new_connection(self, addr: str) -> Optional[grpc.Channel]:
+        """Creates a new gRPC connection to the specified address."""
+        if not addr:
+            return None
         try:
             conn = grpc.insecure_channel(addr)
             with self._lock:
@@ -46,7 +54,8 @@ class ConnectionPool:
         except Exception as e:
             return None
 
-    def close(self):
+    def close(self) -> Optional[Exception]:
+        """Closes all connections in the pool."""
         with self._lock:
             errors = []
             for addr, conn in self._connections.items():
