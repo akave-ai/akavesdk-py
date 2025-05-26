@@ -71,17 +71,19 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
     total_raw_size: int = 0
     total_proto_size: int = 0
 
-    for i, chunk in enumerate(chunks):
+    for i, chunk_payload_data in enumerate(chunks):
         if enc_key:
-            nonce = os.urandom(12)
-            chunk = encrypt(enc_key, chunk, nonce)
+            nonce: bytes = os.urandom(12)
+            processed_chunk_data: bytes = encrypt(enc_key, chunk_payload_data, nonce)
+        else:
+            processed_chunk_data: bytes = chunk_payload_data
         
-        node = PBNode(data=chunk)
-        encoded_node = encode(node)
-        digest = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
-        block_cid = CID("base32", DEFAULT_CID_VERSION, code, digest)
-        chunk_size = len(chunk)
-        total_raw_size += chunk_size
+        node: PBNode = PBNode(data=processed_chunk_data)
+        encoded_node: bytes = encode(node)
+        digest: bytes = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
+        block_cid: CID = CID("base32", DEFAULT_CID_VERSION, code, digest)
+        current_chunk_raw_size = len(processed_chunk_data) 
+        total_raw_size += current_chunk_raw_size
         total_proto_size += len(encoded_node)
         blocks.append(FileBlockUpload(
             cid=str(block_cid),
@@ -112,13 +114,13 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
 
 def extract_block_data(id_str: str, data: bytes) -> bytes:
     try:
-        cid_obj = CID.decode(id_str)
+        cid_obj: CID = CID.decode(id_str)
     except Exception as e:
         raise ValueError(f"Invalid CID: {e}")
 
     if cid_obj.codec == code:  # dag-pb code
         try:
-            node = decode(data)
+            node: PBNode = decode(data)
             return node.data if node.data is not None else b""
         except Exception as e:
             raise ValueError(f"Failed to decode DAG node: {e}")
@@ -135,7 +137,7 @@ def block_by_cid(blocks: List[FileBlockUpload], cid_str: str) -> Tuple[FileBlock
 
 def node_sizes(node_data: bytes) -> Tuple[int, int]:
     try:
-        node = decode(node_data)
+        node: PBNode = decode(node_data)
         raw_data_size = len(node.data) if node.data is not None else 0
         proto_node_size = len(node_data)
         return raw_data_size, proto_node_size
