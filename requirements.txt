@@ -29,6 +29,8 @@ structlog==24.1.0
 # Error handling & utilities
 pydantic==2.6.3
 rich==13.7.0
+backoff==2.2.1
+tenacity==8.2.3
 
 # Cobra CLI equivalent
 click==8.1.7
@@ -42,68 +44,12 @@ PyYAML==6.0.1
 #math
 cryptography==36.0.0
 
-# gRPC and Protocol Buffers
-grpcio>=1.60.0,<2.0.0
-grpcio-tools>=1.60.0,<2.0.0
-protobuf>=5.26.1,<6.0.0
-uuid==1.30
-
-
-# Cryptography and SSL/TLS
-cryptography>=42.0.0,<43.0.0  # Critical: Keep updated for security patches
-pyOpenSSL>=24.0.0,<25.0.0    # SSL/TLS support
-certifi>=2024.2.0            # Certificate verification
-
-
-# IPFS & MerkleDAG Support
-ipfshttpclient==0.8.0a2
-cid==0.1.3
-multiformats==0.3.1.post4
-
-# Ethereum Integration
-web3==6.11.3
-eth-account>=0.8.0
-eth-hash>=0.5.2
-eth-keys>=0.4.0
-eth-utils>=2.1.0
-rlp>=2.0.1
-pycryptodome==3.20.0        # Cryptographic operations
-
-
-# Telemetry and Logging
-opentelemetry-api==1.28.0
-opentelemetry-sdk==1.28.0
-opentelemetry-exporter-jaeger==1.21.0
-opentelemetry-instrumentation-grpc==0.49b0
-prometheus-client==0.19.0
-structlog==24.1.0           # Structured logging
-
-
-# Data Validation and Error Management
-pydantic==2.6.3            # Data validation
-rich==13.7.0               # Rich text and formatting
-tenacity>=8.2.0           # Retry mechanisms
-backoff>=2.2.0            # Exponential backoff
-
-# CLI and File Operations
-click==8.1.7              # Command line interface
-watchdog==3.0.0           # File system monitoring
-PyYAML==6.0.1            # YAML parsing
-
-# Mathematical Operations
-
-numpy>=1.26.0,<2.0.0      # Numerical operations
-reedsolo>=1.7.0           # Reed-Solomon error correction
-
-
-# Testing Framework and Tools
-pytest>=7.4.0             # Testing framework
-pytest-mock>=3.12.0       # Mocking support
-pytest-cov>=4.1.0         # Coverage reporting
-pytest-timeout>=2.2.0     # Test timeout support
-
+#erasure
+reedsolo
 numpy
 
 # Testing dependencies
 pytest>=7.4.0
 pytest-mock>=3.12.0
+pytest-timeout>=2.2.0
+pytest-cov>=4.1.0
