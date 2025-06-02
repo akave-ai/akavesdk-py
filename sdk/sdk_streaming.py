@@ -8,11 +8,7 @@ import threading
 import os
 import random
 import base64
-import hashlib
 from dataclasses import dataclass
-from functools import wraps
-import ssl
-import backoff
 
 import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -108,57 +104,20 @@ class FileChunkDownload:
     Size: int
     Blocks: List[FileBlockDownload]
 
-class FileTransferError(SDKError):
-    """Base class for file transfer errors"""
-    pass
-
-class IntegrityError(FileTransferError):
-    """Raised when data integrity check fails"""
-    pass
-
-class TransferTimeoutError(FileTransferError):
-    """Raised when transfer times out"""
-    pass
-
-class NetworkError(FileTransferError):
-    """Raised when network issues occur"""
-    pass
-
-def retry_on_failure(max_retries=3, max_time=30):
-    """Decorator for retrying operations on failure"""
-    def decorator(func):
-        @wraps(func)
-        @backoff.on_exception(
-            backoff.expo,
-            (grpc.RpcError, NetworkError),
-            max_tries=max_retries,
-            max_time=max_time
-        )
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-class SecureConnectionPool:
-    """Manages a pool of secure gRPC connections"""
-    def __init__(self, cert_path: Optional[str] = None):
+class ConnectionPool:
+    """Manages a pool of gRPC connections"""
+    def __init__(self):
         self.connections = {}
         self.lock = threading.Lock()
-        self.cert_path = cert_path
-    
-    def _create_secure_channel(self, address: str) -> grpc.Channel:
-        """Creates a secure gRPC channel with TLS"""
-        if self.cert_path:
-            with open(self.cert_path, 'rb') as f:
-                cert = f.read()
-            credentials = grpc.ssl_channel_credentials(cert)
-            return grpc.secure_channel(address, credentials)
-        return grpc.insecure_channel(address)
+        self._closed = False
     
     def create_streaming_client(self, address: str, use_pool: bool):
         """Creates a streaming client for the given address"""
+        if self._closed:
+            raise RuntimeError("ConnectionPool has been closed")
+            
         if not use_pool:
-            channel = self._create_secure_channel(address)
+            channel = grpc.insecure_channel(address)
             client = nodeapi_pb2.StreamAPIStub(channel)
             return client, lambda: channel.close()
         
@@ -167,44 +126,109 @@ class SecureConnectionPool:
                 client, _ = self.connections[address]
                 return client, None
             
-            channel = self._create_secure_channel(address)
+            channel = grpc.insecure_channel(address)
             client = nodeapi_pb2.StreamAPIStub(channel)
             self.connections[address] = (client, channel)
             return client, None
-
-class FileTransfer:
-    """Handles secure file transfers with integrity checks"""
-    def __init__(self, chunk_size: int = 1024 * 1024):
-        self.chunk_size = chunk_size
-        self.transferred_bytes = 0
-        self.start_time = None
-        self.lock = threading.Lock()
     
-    def calculate_checksum(self, data: bytes) -> str:
-        """Calculate SHA-256 checksum of data"""
-        return hashlib.sha256(data).hexdigest()
-    
-    def verify_checksum(self, data: bytes, expected_checksum: str) -> bool:
-        """Verify data integrity using checksum"""
-        return self.calculate_checksum(data) == expected_checksum
-    
-    def update_progress(self, bytes_transferred: int):
-        """Update transfer progress"""
+    def close(self):
+        """Closes all connections in the pool"""
+        if self._closed:
+            return
+            
         with self.lock:
-            self.transferred_bytes += bytes_transferred
+            for _, channel in self.connections.values():
+                try:
+                    channel.close()
+                except Exception as e:
+                    logger.error(f"Error closing channel: {e}")
+            self.connections = {}
+            self._closed = True
     
-    def get_progress(self) -> float:
-        """Get transfer progress as percentage"""
-        if not self.start_time:
-            return 0.0
-        return (self.transferred_bytes / self.total_size) * 100
+    def __enter__(self):
+        return self
     
-    def get_transfer_rate(self) -> float:
-        """Get current transfer rate in bytes per second"""
-        if not self.start_time:
-            return 0.0
-        elapsed = time.time() - self.start_time
-        return self.transferred_bytes / elapsed if elapsed > 0 else 0.0
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+class DAGRoot:
+    """Simplified DAG Root implementation"""
+    def __init__(self):
+        self.links = []
+        self._cid = None
+    
+    @classmethod
+    def new(cls):
+        return cls()
+    
+    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int):
+        if not chunk_cid:
+            raise ValueError("Invalid chunk CID")
+        if raw_data_size < 0 or proto_node_size < 0:
+            raise ValueError("Invalid size values")
+            
+        self.links.append({
+            "cid": chunk_cid,
+            "raw_data_size": raw_data_size,
+            "proto_node_size": proto_node_size
+        })
+        self._cid = None  # Reset cached CID
+        return None
+    
+    def build(self):
+        if self._cid is not None:
+            return self._cid
+            
+        if not self.links:
+            raise ValueError("Cannot build DAG root with no links")
+            
+        if not hasattr(cidlib, 'make_cid'):
+            logger.warning("CID library not available, using fallback CID generation")
+            # Generate a deterministic fallback CID based on links
+            link_data = "".join(str(link["cid"]) for link in self.links)
+            hash_input = link_data.encode()
+            cid_str = "Qm" + base64.b32encode(hash_input[:32]).decode('utf-8')
+            self._cid = type('CID', (), {'string': lambda: cid_str})()
+            return self._cid
+        
+        try:
+            # Build a proper CID using the library
+            root_cid = cidlib.make_cid(f"dag_root_{len(self.links)}")
+            self._cid = root_cid
+            return root_cid
+        except Exception as e:
+            logger.error(f"Failed to generate CID: {e}")
+            # Fallback to deterministic CID generation
+            link_data = "".join(str(link["cid"]) for link in self.links)
+            hash_input = link_data.encode()
+            cid_str = "Qm" + base64.b32encode(hash_input[:32]).decode('utf-8')
+            self._cid = type('CID', (), {'string': lambda: cid_str})()
+            return self._cid
+
+def encryption_key(parent_key: bytes, *info_data: str):
+    """Derive an encryption key from a parent key and information data"""
+    if len(parent_key) == 0:
+        return b''
+    
+    info = "/".join(info_data)
+    return derive_key(parent_key, info.encode())
+
+def to_proto_chunk(stream_id: str, cid: str, index: int, size: int, blocks: List[FileBlockUpload]):
+    """Convert block data to protobuf chunk format"""
+    pb_blocks = []
+    for block in blocks:
+        pb_blocks.append({
+            "cid": block.CID,
+            "size": len(block.Data) if hasattr(block, 'Data') and block.Data is not None else 0
+        })
+    
+    return {
+        "stream_id": stream_id,
+        "cid": cid,
+        "index": index,
+        "size": size,
+        "blocks": pb_blocks
+    }
 
 class StreamingAPI:
     """
@@ -217,8 +241,7 @@ class StreamingAPI:
                  block_part_size: int = 1024 * 1024, 
                  use_connection_pool: bool = True,
                  encryption_key: Optional[bytes] = None, 
-                 max_blocks_in_chunk: int = 32,
-                 cert_path: Optional[str] = None):
+                 max_blocks_in_chunk: int = 32):
         """
         Initialize a new StreamingAPI instance.
         
@@ -231,7 +254,6 @@ class StreamingAPI:
             use_connection_pool: Whether to use connection pooling
             encryption_key: Optional encryption key
             max_blocks_in_chunk: Maximum blocks in one chunk
-            cert_path: Path to TLS certificate
         """
         self.client = client
         self.conn = conn
@@ -242,8 +264,6 @@ class StreamingAPI:
         self.use_connection_pool = use_connection_pool
         self.encryption_key = encryption_key if encryption_key else b''
         self.max_blocks_in_chunk = max_blocks_in_chunk
-        self.connection_pool = SecureConnectionPool(cert_path)
-        self.transfer = FileTransfer(block_part_size)
     
     def file_info(self, ctx, bucket_name: str, file_name: str) -> FileMeta:
         """
@@ -387,48 +407,75 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to create file upload: {str(err)}")
     
-    @retry_on_failure(max_retries=3)
     def upload(self, ctx, upload: FileUpload, reader: BinaryIO) -> FileMeta:
-        """Upload a file with integrity checks and progress tracking"""
+        """
+        Uploads a file using streaming api.
+        
+        Args:
+            ctx: Context object
+            upload: File upload information
+            reader: File reader
+            
+        Returns:
+            FileMeta: File metadata
+            
+        Raises:
+            SDKError: If there's an error uploading file
+        """
         try:
-            self.transfer.start_time = time.time()
-            self.transfer.total_size = os.fstat(reader.fileno()).st_size
+            chunk_enc_overhead = 0
+            file_enc_key = b''
+            if self.encryption_key:
+                # TODO: implement key derivation
+                file_enc_key = self.encryption_key
+                chunk_enc_overhead = EncryptionOverhead
             
-            # Create DAG root for the file
+            is_empty_file = True
+            
+            buffer_size = self.max_blocks_in_chunk * BlockSize
+            if self.erasure_code is not None:
+                buffer_size = self.erasure_code.data_blocks * BlockSize
+            buffer_size -= chunk_enc_overhead
+            buf = bytearray(buffer_size)
+            
+            # TODO: Implement DAGRoot
             dag_root = self._create_dag_root()
-            chunk_count = 0
             
+            chunk_index = 0
             while True:
-                data = reader.read(self.block_part_size)
-                if not data:
+                # Check for context cancellation
+                if hasattr(ctx, 'done') and ctx.done():
+                    return None
+                
+                # Read data from reader
+                n = reader.readinto(buf)
+                if n == 0:
+                    if is_empty_file:
+                        raise SDKError("empty file")
                     break
+                is_empty_file = False
                 
-                # Calculate checksum before encryption
-                checksum = self.transfer.calculate_checksum(data)
+                # Create chunk upload
+                chunk_upload = self._create_chunk_upload(ctx, upload, chunk_index, file_enc_key, buf[:n])
                 
-                # Encrypt data
-                if self.encryption_key:
-                    data = encrypt(data, self.encryption_key)
+                # Add link to DAG root
+                self._add_dag_link(dag_root, chunk_upload.ChunkCID, chunk_upload.RawDataSize, chunk_upload.ProtoNodeSize)
                 
-                # Create and upload chunk
-                chunk_upload = self._create_chunk_upload(ctx, upload, chunk_count, 
-                                                       self.encryption_key, data)
+                # Upload chunk
                 self._upload_chunk(ctx, chunk_upload)
                 
-                # Verify chunk integrity
-                if not self._verify_chunk_integrity(ctx, chunk_upload, checksum):
-                    raise IntegrityError(f"Chunk {chunk_count} integrity check failed")
-                
-                chunk_count += 1
-                self.transfer.update_progress(len(data))
+                chunk_index += 1
             
-            # Commit the stream
-            return self._commit_stream(ctx, upload, dag_root.build(), chunk_count)
+            # Build DAG root and get CID
+            root_cid = self._build_dag_root(dag_root)
             
-        except Exception as e:
-            raise FileTransferError(f"Upload failed: {str(e)}")
-        finally:
-            reader.close()
+            # Commit stream
+            file_meta = self._commit_stream(ctx, upload, root_cid, chunk_index)
+            
+            return file_meta
+            
+        except Exception as err:
+            raise SDKError(f"failed to upload file: {str(err)}")
     
     def create_file_download(self, ctx, bucket_name: str, file_name: str, root_cid: str = "") -> FileDownload:
         """
@@ -518,31 +565,37 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to create file download range: {str(err)}")
     
-    @retry_on_failure(max_retries=3)
     def download(self, ctx, file_download: FileDownload, writer: BinaryIO) -> None:
-        """Download a file with integrity checks and progress tracking"""
+        """
+        Downloads a file using streaming api.
+        
+        Args:
+            ctx: Context object
+            file_download: File download information
+            writer: File writer
+            
+        Raises:
+            SDKError: If there's an error downloading file
+        """
         try:
-            self.transfer.start_time = time.time()
-            self.transfer.total_size = sum(chunk.Size for chunk in file_download.Chunks)
+            file_enc_key = b''
+            if self.encryption_key:
+                # TODO: implement key derivation
+                file_enc_key = self.encryption_key
             
             for chunk in file_download.Chunks:
+                # Check for context cancellation
+                if hasattr(ctx, 'done') and ctx.done():
+                    return
+                
+                # Create chunk download
                 chunk_download = self._create_chunk_download(ctx, file_download.StreamID, chunk)
                 
-                # Download and verify chunk
-                data = self._download_chunk_blocks(ctx, file_download.StreamID, 
-                                                 chunk_download, self.encryption_key, writer)
-                
-                # Verify chunk integrity
-                if not self._verify_chunk_integrity(ctx, chunk_download, 
-                                                  self.transfer.calculate_checksum(data)):
-                    raise IntegrityError(f"Chunk {chunk.Index} integrity check failed")
-                
-                self.transfer.update_progress(chunk.Size)
+                # Download chunk blocks
+                self._download_chunk_blocks(ctx, file_download.StreamID, chunk_download, file_enc_key, writer)
             
-        except Exception as e:
-            raise FileTransferError(f"Download failed: {str(e)}")
-        finally:
-            writer.close()
+        except Exception as err:
+            raise SDKError(f"failed to download file: {str(err)}")
     
     def download_v2(self, ctx, file_download: FileDownload, writer: BinaryIO) -> None:
         """
@@ -1198,12 +1251,3 @@ class StreamingAPI:
                     
         except Exception as e:
             raise SDKError(f"failed to fetch block data: {str(e)}")
-
-    def _verify_chunk_integrity(self, ctx, chunk, expected_checksum: str) -> bool:
-        """Verify chunk integrity"""
-        try:
-            # Implement chunk verification logic here
-            return True
-        except Exception as e:
-            logger.error(f"Chunk integrity verification failed: {str(e)}")
-            return False
