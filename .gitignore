@@ -7,11 +7,13 @@ poetry.lock
 # Virtual environment directories
 venv/
 env/
+.env
 .venv/
 ENV/
 env.bak/
 venv.bak/
 NOTES
+
 
 # Distribution / packaging
 .Python
@@ -60,3 +62,6 @@ pytest*
 *.pyo
 *.db
 *.sqlite3
+
+test.py 
+generate_protos.py

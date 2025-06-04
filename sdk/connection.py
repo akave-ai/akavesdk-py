@@ -1,7 +1,6 @@
 import grpc
 import threading
-from ..private.pb import nodeapi_pb2_grpc, ipcnodeapi_pb2_grpc
-from typing import Optional, Callable, Tuple, Dict
+from private.pb import nodeapi_pb2_grpc, ipcnodeapi_pb2_grpc
 
 
 class ConnectionPool:

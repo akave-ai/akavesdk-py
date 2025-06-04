@@ -187,7 +187,6 @@ message IPCFileListResponse {
     google.protobuf.Timestamp created_at = 4;
   }
 }
-
 message IPCFileDeleteRequest{
   bytes transaction = 1;
   bytes bucket_name = 2;
@@ -195,3 +194,4 @@ message IPCFileDeleteRequest{
 }
 
 message IPCFileDeleteResponse{}
+
