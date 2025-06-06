@@ -6,8 +6,8 @@ from private.pb import nodeapi_pb2, nodeapi_pb2_grpc, ipcnodeapi_pb2, ipcnodeapi
 from private.ipc.client import Client, Config
 from private.spclient.spclient import SPClient
 from private.encryption import derive_key
-from typing import List, Optional
-from multiformats import cid
+from typing import List, Optional, Any, Union, Dict
+from multiformats import CID
 from .sdk_ipc import IPC
 from .sdk_streaming import StreamingAPI
 from .erasure_code import ErasureCode
@@ -151,7 +151,7 @@ class SDK:
         
         self.ipc_client = ipcnodeapi_pb2_grpc.IPCNodeAPIStub(self.ipc_conn)
 
-        if len(self.encryption_key) != 0 and len(self.encryption_key) != 32:
+        if self.encryption_key is not None and len(self.encryption_key) != 0 and len(self.encryption_key) != 32:
             raise SDKError("Encryption key length should be 32 bytes long")
 
         if self.parity_blocks_count > self.streaming_max_blocks_in_chunk // 2:
@@ -288,6 +288,9 @@ class SDK:
     def view_bucket(self, ctx, name: str) -> Bucket:
         if name == "":
             raise SDKError("Invalid bucket name")
+        
+        if not self.client:
+            raise SDKError("gRPC client is not initialized. Ensure a connection has been established.")
 
         request = nodeapi_pb2.BucketViewRequest(bucket_name=name)
         response = self.client.BucketView(request)
@@ -296,10 +299,13 @@ class SDK:
             created_at=response.created_at.AsTime() if hasattr(response.created_at, 'AsTime') else response.created_at
         )
 
-    def delete_bucket(self, ctx, name: str) -> bool:
+    def delete_bucket(self, ctx: Any, name: str) -> bool:
         """Deletes a bucket by its name."""
         if name == "":
             raise SDKError("Invalid bucket name")
+        
+        if not self.client:
+            raise SDKError("gRPC client is not initialized. Ensure a connection has been established.")
            
         try:
             request = nodeapi_pb2.BucketDeleteRequest(name=name)
@@ -312,7 +318,7 @@ class SDK:
     @staticmethod
     def extract_block_data(id_str: str, data: bytes) -> bytes:
         try:
-         block_cid = cid.decode(id_str)
+            block_cid = CID.decode(id_str)
         except Exception as e:
           raise ValueError(f"Invalid CID: {e}")
 
