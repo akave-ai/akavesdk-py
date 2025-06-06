@@ -70,18 +70,12 @@ class ErasureCode:
         
         erase_pos: List[int] = list()
         
-        fixed_blocks: List[bytes] = []
         for i, block in enumerate(blocks):
             if block is None:
                 if shard_size is None:
                     raise ValueError("Cannot determine shard size from available blocks.")
                 start = i * shard_size
                 erase_pos.extend(range(start, start + shard_size))
-                fixed_blocks.append(b'\x00' * shard_size)
-            else:
-                if len(block) != shard_size:
-                    raise ValueError(f"Inconsistent shard size: expected {shard_size}, got {len(block)} for block {i}")
-                fixed_blocks.append(block)
-        # fixed_blocks = [block if block is not None else b'\x00' * shard_size for block in blocks]
+        fixed_blocks = [block if block is not None else b'\x00' * shard_size for block in blocks]
         encoded = b"".join(fixed_blocks)
         return self.extract_data(encoded, original_data_size, erase_pos=erase_pos)
