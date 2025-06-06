@@ -7,8 +7,8 @@ from typing import List, Optional, Tuple, Iterable, cast
 def missing_shards_idx(n: int, k: int) -> List[List[int]]:
     return [list(combo) for combo in combinations(range(n), k)]
 
-def split_into_blocks(encoded: bytes, shard_size: int) -> List[bytes]:
-    blocks: List[bytes] = []
+def split_into_blocks(encoded: bytes, shard_size: int) -> List[Optional[bytes]]:
+    blocks: List[Optional[bytes]] = []
     for offset in range(0, len(encoded), shard_size):
         block: bytes = encoded[offset: offset + shard_size]
         if len(block) < shard_size:
@@ -67,11 +67,21 @@ class ErasureCode:
             raise ValueError("All blocks are missing")
         if len(blocks) != self.total_shards:
             raise ValueError(f"Expected {self.total_shards} blocks, got {len(blocks)}")
+        
         erase_pos: List[int] = list()
+        
+        fixed_blocks: List[bytes] = []
         for i, block in enumerate(blocks):
             if block is None:
+                if shard_size is None:
+                    raise ValueError("Cannot determine shard size from available blocks.")
                 start = i * shard_size
                 erase_pos.extend(range(start, start + shard_size))
-        fixed_blocks = [block if block is not None else b'\x00' * shard_size for block in blocks]
+                fixed_blocks.append(b'\x00' * shard_size)
+            else:
+                if len(block) != shard_size:
+                    raise ValueError(f"Inconsistent shard size: expected {shard_size}, got {len(block)} for block {i}")
+                fixed_blocks.append(block)
+        # fixed_blocks = [block if block is not None else b'\x00' * shard_size for block in blocks]
         encoded = b"".join(fixed_blocks)
         return self.extract_data(encoded, original_data_size, erase_pos=erase_pos)
