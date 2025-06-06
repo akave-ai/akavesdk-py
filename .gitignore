@@ -30,6 +30,8 @@ dist/
 *.swo
 *.bak
 *.tmp
+.mypy_cache/
+scripts/
 
 # macOS files
 .DS_Store
