@@ -3,13 +3,13 @@ from sdk.erasure_code import ErasureCode, missing_shards_idx, split_into_blocks
 
 class TestErasureCode(unittest.TestCase):
 
-    def test_invalid_params(self):
+    def test_invalid_params(self) -> None:
         with self.assertRaises(ValueError):
             _ = ErasureCode.new(0, 0)
         with self.assertRaises(ValueError):
             _ = ErasureCode.new(16, 0)
 
-    def test_erasure_code(self):
+    def test_erasure_code(self) -> None:
         data = b"Quick brown fox jumps over the lazy dog"
         data_shards = 5
         parity_shards = 3
