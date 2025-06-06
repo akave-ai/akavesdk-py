@@ -1,7 +1,7 @@
 import io
 import logging
 import concurrent.futures
-from typing import List, Optional, Dict, Any, Callable, BinaryIO
+from typing import List, Optional, Dict, Any, Callable, BinaryIO, Tuple, Union
 import time
 from datetime import datetime
 import threading
@@ -97,11 +97,11 @@ class FileChunkDownload:
     Blocks: List[FileBlockDownload]
 
 class ConnectionPool:
-    def __init__(self):
-        self.connections = {}
+    def __init__(self) -> None:
+        self.connections: Dict[str, Tuple[nodeapi_pb2_grpc.StreamAPIStub, grpc.Channel]] = {}
         self.lock = threading.Lock()
-    
-    def create_streaming_client(self, address: str, use_pool: bool):
+
+    def create_streaming_client(self, address: str, use_pool: bool) -> Tuple[nodeapi_pb2_grpc.StreamAPIStub, Callable[[], None]]:
         if not use_pool:
             channel = grpc.insecure_channel(address)
             client = nodeapi_pb2_grpc.StreamAPIStub(channel)
@@ -110,14 +110,14 @@ class ConnectionPool:
         with self.lock:
             if address in self.connections:
                 client, _ = self.connections[address]
-                return client, None
+                return client, lambda: None
             
             channel = grpc.insecure_channel(address)
             client = nodeapi_pb2_grpc.StreamAPIStub(channel)
             self.connections[address] = (client, channel)
-            return client, None
-    
-    def close(self):
+            return client, lambda: None
+
+    def close(self) -> None:
         with self.lock:
             for _, channel in self.connections.values():
                 channel.close()
@@ -125,14 +125,14 @@ class ConnectionPool:
         return None
 
 class DAGRoot:
-    def __init__(self):
-        self.links = []
+    def __init__(self) -> None:
+        self.links: List[Dict[str, Any]] = []
     
     @classmethod
-    def new(cls):
+    def new(cls) -> "DAGRoot":
         return cls()
-    
-    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int):
+
+    def add_link(self, chunk_cid: str, raw_data_size: int, proto_node_size: int) -> None:
         self.links.append({
             "cid": chunk_cid,
             "raw_data_size": raw_data_size,
@@ -180,17 +180,20 @@ def to_proto_chunk(stream_id: str, cid: str, index: int, size: int, blocks: List
 
 class StreamingAPI:
     
-    def __init__(self, conn: grpc.Channel, client: Any,
-                 erasure_code: Optional[ErasureCode] = None, 
-                 max_concurrency: int = 10,
-                 block_part_size: int = 1024 * 1024, 
-                 use_connection_pool: bool = True,
-                 encryption_key: Optional[bytes] = None, 
-                 max_blocks_in_chunk: int = 32):
+    def __init__(
+        self, conn: grpc.Channel, 
+        client: Any,
+        erasure_code: Optional[ErasureCode] = None, 
+        max_concurrency: int = 10,
+        block_part_size: int = 1024 * 1024, 
+        use_connection_pool: bool = True,
+        encryption_key: Optional[bytes] = None, 
+        max_blocks_in_chunk: int = 32
+    ) -> None:
         
         self.client = client
         self.conn = conn
-        self.sp_client = SPClient()
+        self.sp_client: SPClient = SPClient()
         self.erasure_code = erasure_code
         self.max_concurrency = max_concurrency
         self.block_part_size = block_part_size
@@ -198,7 +201,7 @@ class StreamingAPI:
         self.encryption_key = encryption_key if encryption_key else b''
         self.max_blocks_in_chunk = max_blocks_in_chunk
     
-    def file_info(self, ctx, bucket_name: str, file_name: str) -> FileMeta:
+    def file_info(self, ctx: Any, bucket_name: str, file_name: str) -> FileMeta:
         if bucket_name == "":
             raise SDKError("empty bucket name")
         if file_name == "":
@@ -215,8 +218,8 @@ class StreamingAPI:
             return self._to_file_meta(res, bucket_name)
         except Exception as err:
             raise SDKError(f"failed to get file info: {str(err)}")
-    
-    def list_files(self, ctx, bucket_name: str) -> List[FileMeta]:
+
+    def list_files(self, ctx: Any, bucket_name: str) -> List[FileMeta]:
         if bucket_name == "":
             raise SDKError("empty bucket name")
         
@@ -234,8 +237,8 @@ class StreamingAPI:
             return files
         except Exception as err:
             raise SDKError(f"failed to list files: {str(err)}")
-    
-    def file_versions(self, ctx, bucket_name: str, file_name: str) -> List[FileMeta]:
+
+    def file_versions(self, ctx: Any, bucket_name: str, file_name: str) -> List[FileMeta]:
         if bucket_name == "":
             raise SDKError("empty bucket name")
         
@@ -254,8 +257,8 @@ class StreamingAPI:
             return files
         except Exception as err:
             raise SDKError(f"failed to list file versions: {str(err)}")
-    
-    def create_file_upload(self, ctx, bucket_name: str, file_name: str) -> FileUpload:
+
+    def create_file_upload(self, ctx: Any, bucket_name: str, file_name: str) -> FileUpload:
         if bucket_name == "":
             raise SDKError("empty bucket name")
         

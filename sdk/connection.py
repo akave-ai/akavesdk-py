@@ -1,10 +1,12 @@
 import grpc
 import threading
+from typing import Dict, Optional, Tuple, Callable
 from private.pb import nodeapi_pb2_grpc, ipcnodeapi_pb2_grpc
 
 
 class ConnectionPool:
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initializes a new ConnectionPool instance."""
         self._lock : threading.RLock = threading.RLock()
         self._connections: Dict[str, grpc.Channel]  = {}
         self.use_connection_pool: bool = False

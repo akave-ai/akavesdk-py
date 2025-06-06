@@ -55,7 +55,7 @@ class ErasureCode:
         except ReedSolomonError as e:
             raise ValueError("Decoding error: " + str(e))
 
-    def extract_data_blocks(self, blocks, original_data_size: int) -> bytes:
+    def extract_data_blocks(self, blocks: List[Optional[bytes]], original_data_size: int) -> bytes:
         if not blocks:
             raise ValueError("No blocks provided")
         shard_size = None
@@ -67,7 +67,7 @@ class ErasureCode:
             raise ValueError("All blocks are missing")
         if len(blocks) != self.total_shards:
             raise ValueError(f"Expected {self.total_shards} blocks, got {len(blocks)}")
-        erase_pos = list()
+        erase_pos: List[int] = list()
         for i, block in enumerate(blocks):
             if block is None:
                 start = i * shard_size

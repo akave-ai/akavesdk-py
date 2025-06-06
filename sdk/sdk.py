@@ -12,17 +12,26 @@ from .sdk_ipc import IPC
 from .sdk_streaming import StreamingAPI
 from .erasure_code import ErasureCode
 from .common import SDKError, BLOCK_SIZE, MIN_BUCKET_NAME_LENGTH
+from .model import BucketCreateResult, Bucket
 import os
 import time
 
 class AkaveContractFetcher:
     """Fetches contract addresses from Akave node"""
     
-    def __init__(self, node_address: str):
-        self.node_address = node_address
-        self.channel = None
-        self.stub = None
-    
+    def __init__(self, node_address: str) -> None:
+        """
+        Initializes the contract fetcher with the node address.
+        :param node_address: gRPC address of the Akave node
+        """
+        if not node_address:
+            raise SDKError("Node address must be provided")
+        if not isinstance(node_address, str):
+            raise SDKError("Node address must be a string")
+        self.node_address: str = node_address
+        self.channel: Optional[grpc.Channel] = None
+        self.stub: Optional[ipcnodeapi_pb2_grpc.IPCNodeAPIStub] = None
+
     def connect(self) -> bool:
         """Connect to the Akave node"""
         try:
@@ -60,22 +69,59 @@ class AkaveContractFetcher:
             logging.error(f"❌ Error fetching contract info: {e}")
             return None
     
-    def close(self):
+    def close(self) -> None:
         """Close the gRPC connection"""
         if self.channel:
             self.channel.close()
 
 class SDK:
-    def __init__(self, address: str, max_concurrency: int, block_part_size: int, use_connection_pool: bool,
-                 encryption_key: Optional[bytes] = None, private_key: Optional[str] = None,
-                 streaming_max_blocks_in_chunk: int = 32, parity_blocks_count: int = 0,
-                 ipc_address: Optional[str] = None):
-        self.client = None
-        self.conn = None
-        self.ipc_conn = None
-        self.ipc_client = None
-        self.sp_client = None
-        self.streaming_erasure_code = None
+    def __init__(
+        self, 
+        address: str, 
+        max_concurrency: int, 
+        block_part_size: int, 
+        use_connection_pool: bool,
+        encryption_key: Optional[bytes] = None, 
+        private_key: Optional[str] = None,
+        streaming_max_blocks_in_chunk: int = 32,
+        parity_blocks_count: int = 0,
+        ipc_address: Optional[str] = None
+    ) -> None:
+        """
+        Initializes the SDK with the given parameters.
+        :param address: gRPC address of the Akave node
+        :param max_concurrency: Maximum number of concurrent operations
+        :param block_part_size: Size of each block part in bytes
+        :param use_connection_pool: Whether to use a connection pool for gRPC connections
+        :param encryption_key: Optional encryption key for secure operations
+        :param private_key: Optional private key for IPC operations
+        :param streaming_max_blocks_in_chunk: Maximum number of blocks in a streaming chunk
+        :param parity_blocks_count: Number of parity blocks for erasure coding
+        :param ipc_address: Optional IPC address for Ethereum node connection
+        """
+        if not address:
+            raise SDKError("Address must be provided")
+        if not isinstance(max_concurrency, int) or max_concurrency <= 0:
+            raise SDKError("max_concurrency must be a positive integer")
+        if not isinstance(block_part_size, int) or block_part_size <= 0:
+            raise SDKError("block_part_size must be a positive integer")
+        if not isinstance(use_connection_pool, bool):
+            raise SDKError("use_connection_pool must be a boolean value")
+        if streaming_max_blocks_in_chunk <= 0 or streaming_max_blocks_in_chunk > BLOCK_SIZE:
+            raise SDKError(f"Invalid streaming_max_blocks_in_chunk: {streaming_max_blocks_in_chunk}. Valid range is 1-{BLOCK_SIZE}")
+        if parity_blocks_count < 0:
+            raise SDKError("parity_blocks_count must be a non-negative integer")
+        if ipc_address and not isinstance(ipc_address, str):
+            raise SDKError("ipc_address must be a string if provided")
+        if encryption_key and not isinstance(encryption_key, bytes):
+            raise SDKError("encryption_key must be a bytes object if provided")
+        
+        self.client: Optional[nodeapi_pb2_grpc.NodeAPIStub] = None
+        self.conn: Optional[grpc.Channel] = None
+        self.ipc_conn: Optional[grpc.Channel] = None
+        self.ipc_client: Optional[ipcnodeapi_pb2_grpc.IPCNodeAPIStub] = None
+        self.sp_client: Optional[SPClient] = None
+        self.streaming_erasure_code: Optional[ErasureCode] = None
         self.max_concurrency = max_concurrency
         self.block_part_size = block_part_size
         self.use_connection_pool = use_connection_pool
@@ -86,7 +132,7 @@ class SDK:
         self.ipc_address = ipc_address or address  # Use provided IPC address or fallback to main address
         
         # Cache for dynamically fetched contract info
-        self._contract_info = None
+        self._contract_info: Optional[dict] = None
 
         if self.block_part_size <= 0 or self.block_part_size > BLOCK_SIZE:
             raise SDKError(f"Invalid blockPartSize: {block_part_size}. Valid range is 1-{BLOCK_SIZE}")
@@ -151,15 +197,17 @@ class SDK:
         logging.error("❌ All endpoints failed for contract fetching")
         return None
 
-    def close(self):
+    def close(self) -> None:
         """Close the gRPC channels."""
         if self.conn:
             self.conn.close()
         if self.ipc_conn and self.ipc_conn != self.conn:
             self.ipc_conn.close()
 
-    def streaming_api(self):
+    def streaming_api(self) -> StreamingAPI:
         """Returns SDK streaming API."""
+        if self.conn is None:
+            raise SDKError("gRPC connection (self.conn) is not established.")
         return StreamingAPI(
             conn=self.conn,
             client=nodeapi_pb2_grpc.StreamAPIStub(self.conn),
@@ -171,7 +219,7 @@ class SDK:
             max_blocks_in_chunk=self.streaming_max_blocks_in_chunk
         )
 
-    def ipc(self):
+    def ipc(self) -> IPC:
         """Returns SDK IPC API."""
         try:
             # Get connection parameters dynamically
@@ -227,6 +275,11 @@ class SDK:
     def create_bucket(self, ctx, name: str) -> BucketCreateResult:
         if len(name) < MIN_BUCKET_NAME_LENGTH:
             raise SDKError("Invalid bucket name")
+        
+        if not self.client:
+            raise SDKError("gRPC client is not initialized")
+        if not isinstance(name, str):
+            raise SDKError("Bucket name must be a string")
 
         request = nodeapi_pb2.BucketCreateRequest(name=name)
         response = self.client.BucketCreate(request)
@@ -256,6 +309,7 @@ class SDK:
             logging.error(f"Error deleting bucket: {err}")
             raise SDKError(f"Failed to delete bucket: {err}")
 
+    @staticmethod
     def extract_block_data(id_str: str, data: bytes) -> bytes:
         try:
          block_cid = cid.decode(id_str)
