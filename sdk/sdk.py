@@ -39,14 +39,13 @@ class AkaveContractFetcher:
             self.channel = grpc.insecure_channel(self.node_address)
             self.stub = ipcnodeapi_pb2_grpc.IPCNodeAPIStub(self.channel)
             return True
-            
         except grpc.RpcError as e:
             logging.error(f"❌ gRPC error: {e.code()} - {e.details()}")
             return False
         except Exception as e:
             logging.error(f"❌ Connection error: {type(e).__name__}: {str(e)}")
             return False
-    
+
     def fetch_contract_addresses(self) -> Optional[dict]:
         """Fetch contract addresses from the node"""
         if not self.stub:
@@ -272,7 +271,7 @@ class SDK:
         except Exception as e:
             raise SDKError(f"Failed to initialize IPC API: {str(e)}")
 
-    def create_bucket(self, ctx, name: str) -> BucketCreateResult:
+    def create_bucket(self, ctx: Any, name: str) -> BucketCreateResult:
         if len(name) < MIN_BUCKET_NAME_LENGTH:
             raise SDKError("Invalid bucket name")
         
@@ -285,7 +284,7 @@ class SDK:
         response = self.client.BucketCreate(request)
         return BucketCreateResult(name=response.name, created_at=response.created_at.AsTime() if hasattr(response.created_at, 'AsTime') else response.created_at)
 
-    def view_bucket(self, ctx, name: str) -> Bucket:
+    def view_bucket(self, ctx: Any, name: str) -> Bucket:
         if name == "":
             raise SDKError("Invalid bucket name")
         
