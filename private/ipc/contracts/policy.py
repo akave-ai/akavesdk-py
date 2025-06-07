@@ -1,7 +1,8 @@
-from typing import List, Tuple, Optional
-from eth_typing import HexAddress, HexStr
+from typing import List, Tuple, Optional, Dict, Any, cast
+from eth_typing import HexAddress, HexStr, ChecksumAddress
 from web3 import Web3
-from web3.contract import Contract
+from web3.types import TxParams, ABI, TxReceipt
+from web3.contract import Contract # type: ignore[import-untyped]
 import json
 
 class PolicyContract:
@@ -16,6 +17,7 @@ class PolicyContract:
         """
         self.web3 = web3
         self.contract_address = contract_address
+        self.checksum_address = web3.to_checksum_address(contract_address)
         
         # Contract ABI from the Go bindings
         self.abi = [
@@ -104,8 +106,8 @@ class PolicyContract:
                 "type": "function"
             }
         ]
-        
-        self.contract = web3.eth.contract(address=contract_address, abi=self.abi)
+
+        self.contract: Contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def add_user_access(self, file_id: bytes, user: HexAddress, from_address: HexAddress) -> None:
         """Grants access to a file for a specific user.
@@ -115,7 +117,10 @@ class PolicyContract:
             user: Address of the user to grant access to
             from_address: Address granting the access
         """
-        tx_hash = self.contract.functions.addUserAccess(file_id, user).transact({'from': from_address})
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
+        if not self.web3.is_checksum_address(checksum_from_address):
+            raise ValueError(f"Invalid from_address: {from_address}")
+        tx_hash = self.contract.functions.addUserAccess(file_id, user).transact({'from': checksum_from_address})
         self.web3.eth.wait_for_transaction_receipt(tx_hash)
 
     def get_access_manager(self) -> HexAddress:
@@ -124,7 +129,8 @@ class PolicyContract:
         Returns:
             Address of the access manager contract
         """
-        return self.contract.functions.accessManager().call()
+        result = self.contract.functions.accessManager().call()
+        return cast(HexAddress, result)
 
     def has_access(self, file_id: bytes, user: HexAddress) -> bool:
         """Checks if a user has access to a file.
@@ -136,7 +142,8 @@ class PolicyContract:
         Returns:
             True if the user has access, False otherwise
         """
-        return self.contract.functions.hasAccess(file_id, user).call()
+        result = self.contract.functions.hasAccess(file_id, user).call()
+        return cast(bool, result)
 
     def remove_user_access(self, file_id: bytes, user: HexAddress, from_address: HexAddress) -> None:
         """Revokes access to a file for a specific user.
@@ -146,5 +153,6 @@ class PolicyContract:
             user: Address of the user to revoke access from
             from_address: Address revoking the access
         """
-        tx_hash = self.contract.functions.removeUserAccess(file_id, user).transact({'from': from_address})
-        self.web3.eth.wait_for_transaction_receipt(tx_hash) 
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
+        tx_hash = self.contract.functions.removeUserAccess(file_id, user).transact({'from': checksum_from_address})
+        self.web3.eth.wait_for_transaction_receipt(tx_hash)
