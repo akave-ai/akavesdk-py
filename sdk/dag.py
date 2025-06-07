@@ -131,12 +131,7 @@ def extract_block_data(id_str: str, data: bytes) -> bytes:
     elif cid_obj.codec == 0x55:  # raw codec
         return data
     else:
-        # Provide more details in error
-        if isinstance(cid_obj.codec, int):
-            codec_repr = f"0x{cid_obj.codec:x}"
-        else:
-            codec_repr = cid_obj.codec
-        raise ValueError(f"Unsupported CID codec: {codec_repr}")
+        raise ValueError(f"Unsupported CID codec: {cid_obj.codec}")
 
 
 def block_by_cid(blocks: List[FileBlockUpload], cid_str: str) -> Tuple[FileBlockUpload, bool]:
