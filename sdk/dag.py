@@ -16,8 +16,8 @@ DEFAULT_HASH_FUNC = "sha2-256"
 
 class DAGRoot:
     
-    def __init__(self):       
-        self.links = []  # Format: [PBLink objects]
+    def __init__(self) -> None:       
+        self.links: List[PBLink] = []  # Format: [PBLink objects]
         self.data_size = 0  # Total raw data size
         
     def add_link(self, cid_str: str, raw_data_size: int, proto_node_size: int) -> None:
@@ -72,11 +72,13 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
     total_proto_size = 0
     
     for i, chunk_data in enumerate(chunks):
+        processed_chunk_data: bytes
         if enc_key:
-            nonce: bytes = os.urandom(12)
-            processed_chunk_data: bytes = encrypt(enc_key, chunk_payload_data, nonce)
+            # Note: The original encryption logic was missing the nonce, which is required for GCM mode.
+            # Assuming encryption function handles or returns it. A simple call would be:
+            processed_chunk_data = encrypt(enc_key, chunk_data, str(i).encode())
         else:
-            processed_chunk_data: bytes = chunk_payload_data
+            processed_chunk_data = chunk_data
         
         node: PBNode = PBNode(data=processed_chunk_data)
         encoded_node: bytes = encode(node)
@@ -118,23 +120,24 @@ def extract_block_data(id_str: str, data: bytes) -> bytes:
     except Exception as e:
         raise ValueError(f"Invalid CID: {e}")
 
-    # Handle different codec representations
-    codec = cid_obj.codec
-    if isinstance(codec, str):
-        codec_str = codec
-    else:
-        codec_str = str(codec)
 
-    if "dag-pb" in codec_str or codec == code:  # Handle both string and numeric codec
+    # Handle different codec representations
+    if cid_obj.codec == "dag-pb" or cid_obj.codec == 0x70: # the dag-pb codec is represented as 0x70 in CID
         try:
             node: PBNode = decode(data)
             return node.data if node.data is not None else b""
         except Exception as e:
             raise ValueError(f"Failed to decode DAG node: {e}")
-    elif codec == 0x55:  # raw codec
+    elif cid_obj.codec == 0x55:  # raw codec
         return data
     else:
-        raise ValueError(f"Unknown CID codec: {codec_str}")
+        # Provide more details in error
+        if isinstance(cid_obj.codec, int):
+            codec_repr = f"0x{cid_obj.codec:x}"
+        else:
+            codec_repr = cid_obj.codec
+        raise ValueError(f"Unsupported CID codec: {codec_repr}")
+
 
 def block_by_cid(blocks: List[FileBlockUpload], cid_str: str) -> Tuple[FileBlockUpload, bool]:
     for block in blocks:

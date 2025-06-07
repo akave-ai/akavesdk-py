@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional, cast
 from eth_typing import HexAddress, HexStr, ChecksumAddress
 from web3 import Web3
-from web3.types import TxParams, ABI, TxReceipt
+from web3.types import TxParams, TxReceipt
 from web3.contract import Contract # type: ignore[import-untyped]
 from eth_account import Account
 import json
