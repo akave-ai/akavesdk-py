@@ -1,10 +1,13 @@
 import time
 from typing import Optional
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+from web3.middleware import geth_poa_middleware # type: ignore[import-untyped]
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from .contracts import StorageContract, AccessManagerContract
+from typing import cast, Tuple
+from eth_typing import HexAddress, HexStr
+from web3.types import TxReceipt
 
 class TransactionFailedError(Exception):
     """Raised when a transaction fails (receipt status is 0)."""
@@ -12,23 +15,55 @@ class TransactionFailedError(Exception):
 
 class Config:
     """Configuration for the Ethereum storage contract client."""
-    def __init__(self, dial_uri: str, private_key: str, storage_contract_address: str, access_contract_address: Optional[str] = None):
+    def __init__(self, dial_uri: str, private_key: str, storage_contract_address: str, access_contract_address: Optional[str] = None) -> None:
+        """
+        Initializes the client configuration.
+        Args:
+            dial_uri: URI for the Ethereum node (e.g., HTTP or IPC path).
+            private_key: Private key of the account to use for transactions.
+            storage_contract_address: Address of the deployed Storage contract.
+            access_contract_address: Optional address of the AccessManager contract.
+        """
+        if not dial_uri:
+            raise ValueError("Dial URI must not be empty.")
+        if not private_key:
+            raise ValueError("Private key must not be empty.")
+        if not storage_contract_address:
+            raise ValueError("Storage contract address must not be empty.")
+        if access_contract_address and not isinstance(access_contract_address, str):
+            raise ValueError("Access contract address must be a string if provided.")
         self.dial_uri = dial_uri
         self.private_key = private_key
         self.storage_contract_address = storage_contract_address
         self.access_contract_address = access_contract_address
 
     @staticmethod
-    def default():
+    def default() -> 'Config':
         return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="")
 
 class Client:
     """Represents the Ethereum storage client."""
-    def __init__(self, web3: Web3, auth: LocalAccount, storage: StorageContract, access_manager: Optional[AccessManagerContract] = None):
-        self.web3 = web3
-        self.auth = auth
-        self.storage = storage
-        self.access_manager = access_manager
+    def __init__(self, web3: Web3, auth: LocalAccount, storage: StorageContract, access_manager: Optional[AccessManagerContract] = None) -> None:
+        """
+        Initializes the client with the given Web3 instance, account, and contracts.
+        Args:
+            web3: Web3 instance connected to the Ethereum node.
+            auth: Local account used for signing transactions.
+            storage: Storage contract instance.
+            access_manager: Optional AccessManager contract instance.
+        """
+        if not isinstance(web3, Web3):
+            raise TypeError("web3 must be an instance of web3.Web3")
+        if not isinstance(auth, LocalAccount):
+            raise TypeError("auth must be an instance of eth_account.LocalAccount")
+        if not isinstance(storage, StorageContract):
+            raise TypeError("storage must be an instance of StorageContract")
+        if access_manager is not None and not isinstance(access_manager, AccessManagerContract):
+            raise TypeError("access_manager must be an instance of AccessManagerContract or None")
+        self.web3: Web3 = web3
+        self.auth: LocalAccount = auth
+        self.storage: StorageContract = storage
+        self.access_manager: Optional[AccessManagerContract] = access_manager
         # self.ticker = 0.2  # 200ms polling interval (currently unused)
 
     @classmethod
@@ -57,29 +92,28 @@ class Client:
             raise ValueError(f"Invalid private key: {e}") from e
 
         # Initialize contracts
-        storage = StorageContract(web3, config.storage_contract_address)
+        storage_addr = cast(HexAddress, config.storage_contract_address)
+        storage = StorageContract(web3, storage_addr)
         access_manager = None
         if config.access_contract_address:
-            access_manager = AccessManagerContract(web3, config.access_contract_address)
+            access_addr = cast(HexAddress, config.access_contract_address)
+            access_manager = AccessManagerContract(web3, access_addr)
 
         return cls(web3, account, storage, access_manager)
 
     @staticmethod
-    def _wait_for_tx_receipt(web3_instance: Web3, tx_hash: str, timeout: int = 120, poll_latency: float = 0.5):
+    def _wait_for_tx_receipt(web3_instance: Web3, tx_hash: str, timeout: int = 120, poll_latency: float = 0.5) -> TxReceipt:
         """Waits for a transaction receipt and raises an error if it failed."""
         try:
-            receipt = web3_instance.eth.wait_for_transaction_receipt(
-                tx_hash, timeout=timeout, poll_latency=poll_latency
-            )
-            if receipt.status == 0:
-                # Consider adding more details from the receipt if available
+            receipt: TxReceipt = web3_instance.eth.wait_for_transaction_receipt(cast(HexStr, tx_hash), timeout=timeout, poll_latency=poll_latency)
+            if receipt['status'] == 0:
                 raise TransactionFailedError(f"Transaction {tx_hash} failed.")
             return receipt
-        except Exception as e: # Catch specific web3 exceptions if needed
+        except Exception as e:
              raise TimeoutError(f"Timeout waiting for transaction {tx_hash}") from e
 
     @classmethod
-    def deploy_storage(cls, config: Config):
+    def deploy_storage(cls, config: Config) -> Tuple['Client', HexAddress, HexAddress]:
         """Deploys Storage and AccessManager contracts.
 
         Requires ABI and Bytecode to be available. 
@@ -95,7 +129,7 @@ class Client:
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         try:
-            account = Account.from_key(config.private_key)
+            account: LocalAccount = Account.from_key(config.private_key)
         except ValueError as e:
             raise ValueError(f"Invalid private key: {e}") from e
             
@@ -103,7 +137,11 @@ class Client:
         # Ensure these are correctly imported or defined
         try:
             # This assumes you have ABI/Bytecode defined in your contracts package/module
-            from .contracts import storage_abi, storage_bytecode, access_manager_abi, access_manager_bytecode
+            # from .contracts import storage_abi, storage_bytecode, access_manager_abi, access_manager_bytecode
+            from .contracts import (
+                storage_abi, storage_bytecode,
+                access_manager_abi, access_manager_bytecode
+            )
         except ImportError:
             raise ImportError("Storage/AccessManager ABI and Bytecode not found. Ensure they are defined in akavesdk-py/private/ipc/contracts.")
             
@@ -121,8 +159,10 @@ class Client:
         signed_tx = account.sign_transaction(construct_txn)
         tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         print(f"Storage deployment transaction sent: {tx_hash.hex()}")
-        storage_receipt = cls._wait_for_tx_receipt(web3, tx_hash)
-        storage_address = storage_receipt.contractAddress
+        storage_receipt = cls._wait_for_tx_receipt(web3, cast(HexStr, tx_hash.hex()))
+        storage_address = storage_receipt['contractAddress']
+        if storage_address is None:
+            raise TransactionFailedError(f"Storage contract deployment failed, no contract address found in receipt: {tx_hash.hex()}")
         print(f"Storage contract deployed at: {storage_address}")
 
         # Deploy Access Manager Contract
@@ -139,13 +179,20 @@ class Client:
         signed_tx = account.sign_transaction(construct_txn)
         tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         print(f"AccessManager deployment transaction sent: {tx_hash.hex()}")
-        access_manager_receipt = cls._wait_for_tx_receipt(web3, tx_hash)
-        access_manager_address = access_manager_receipt.contractAddress
+        access_manager_receipt = cls._wait_for_tx_receipt(web3, cast(HexStr, tx_hash.hex()))
+        access_manager_address = access_manager_receipt['contractAddress']
+        if access_manager_address is None:
+            raise TransactionFailedError(f"AccessManager contract deployment failed, no contract address found in receipt: {tx_hash.hex()}")
         print(f"AccessManager contract deployed at: {access_manager_address}")
 
         # Create contract instances for the client
-        storage_instance = StorageContract(web3, storage_address)
-        access_manager_instance = AccessManagerContract(web3, access_manager_address)
+        checksum_storage_address = web3.to_checksum_address(storage_address) # storage_address is now guaranteed to be non-None
+        checksum_access_manager_address = web3.to_checksum_address(access_manager_address)
+
+        storage_instance = StorageContract(web3, checksum_storage_address)
+        access_manager_instance = AccessManagerContract(web3, checksum_access_manager_address)
+
+        # Update config with deployed addresses if needed, or return them separately
 
         # Update config with deployed addresses if needed, or return them separately
         # config.storage_contract_address = storage_address
