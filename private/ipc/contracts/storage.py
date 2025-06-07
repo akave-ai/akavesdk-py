@@ -1,7 +1,8 @@
-from typing import List, Tuple, Optional
-from eth_typing import HexAddress, HexStr
+from typing import List, Tuple, Optional, cast
+from eth_typing import HexAddress, HexStr, ChecksumAddress
 from web3 import Web3
-from web3.contract import Contract
+from web3.types import TxParams, ABI, TxReceipt
+from web3.contract import Contract # type: ignore[import-untyped]
 from eth_account import Account
 import json
 
@@ -17,6 +18,9 @@ class StorageContract:
         """
         self.web3 = web3
         self.contract_address = contract_address
+
+        # Convert to checksum address for web3.py contract interaction
+        self.checksum_address: ChecksumAddress = self.web3.to_checksum_address(self.contract_address)
         
         # Contract ABI from the Go bindings
         self.abi = [
@@ -240,7 +244,7 @@ class StorageContract:
             }
         ]
         
-        self.contract = web3.eth.contract(address=contract_address, abi=self.abi)
+        self.contract: Contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def get_access_manager(self) -> HexAddress:
         """Gets the address of the associated access manager contract.
@@ -248,9 +252,10 @@ class StorageContract:
         Returns:
             Address of the access manager contract
         """
-        return self.contract.functions.accessManager().call()
+        result = self.contract.functions.accessManager().call()
+        return cast(HexAddress, result)
 
-    def create_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, gas_limit: int = None) -> HexStr:
+    def create_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, gas_limit: Optional[int] = None) -> HexStr:
         """Creates a new bucket.
         
         Args:
@@ -263,10 +268,11 @@ class StorageContract:
             Transaction hash of the create operation
         """
         # Build transaction
-        tx_params = {
-            'from': from_address,
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
+        tx_params: TxParams = {
+            'from': checksum_from_address,
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(from_address)
+            'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
         }
         
         if gas_limit:
@@ -283,8 +289,8 @@ class StorageContract:
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
         # Wait for receipt
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt['status'] != 1:
             # Get revert reason if possible
             try:
                 self.contract.functions.createBucket(bucket_name).call({
@@ -294,7 +300,7 @@ class StorageContract:
                 raise Exception(f"Transaction reverted: {str(e)}")
             raise Exception(f"Transaction failed. Receipt: {receipt}")
         
-        return tx_hash.hex()
+        return cast(HexStr, tx_hash.hex())
 
     def create_file(self, bucket_name: str, file_name: str, file_id: bytes, size: int, from_address: HexAddress, private_key: str) -> None:
         """Creates a new file entry.
@@ -308,11 +314,12 @@ class StorageContract:
             private_key: Private key for signing the transaction
         """
         # Build transaction
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
         tx = self.contract.functions.createFile(bucket_name, file_name, file_id, size).build_transaction({
-            'from': from_address,
+            'from': checksum_from_address,
             'gas': 500000,  # Gas limit
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(from_address)
+            'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
         })
         
         # Sign transaction
@@ -322,8 +329,8 @@ class StorageContract:
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
         # Wait for receipt
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt['status'] != 1:
             raise Exception("Transaction failed")
 
     def commit_file(self, bucket_name: str, file_name: str, size: int, root_cid: bytes, from_address: HexAddress, private_key: str) -> None:
@@ -341,17 +348,19 @@ class StorageContract:
         # Adding 'commitFile' based on Go SDK patterns
         function_name = 'commitFile' # Adjust if contract ABI uses a different name
         
+        
         try:
             contract_function = getattr(self.contract.functions, function_name)
         except AttributeError:
             raise NotImplementedError(f"Contract function '{function_name}' not found in ABI")
             
         # Build transaction
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
         tx = contract_function(bucket_name, file_name, size, root_cid).build_transaction({
-            'from': from_address,
+            'from': checksum_from_address,
             'gas': 500000,  # Gas limit (adjust as needed)
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(from_address)
+            'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
         })
         
         # Sign transaction
@@ -361,11 +370,11 @@ class StorageContract:
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
         # Wait for receipt
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt['status'] != 1:
             raise Exception(f"Transaction failed for {function_name}")
 
-    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: str = None) -> HexStr:
+    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: Optional[str] = None) -> HexStr:
         """Deletes a bucket.
         
         Args:
@@ -407,11 +416,12 @@ class StorageContract:
             raise Exception(f"Failed to prepare bucket deletion: {str(e)}")
 
         # Build transaction parameters - use standard legacy transaction
-        tx_params = {
-            'from': from_address,
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
+        tx_params: TxParams = {
+            'from': checksum_from_address,
             'gas': 500000,  # Gas limit
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(from_address),
+            'nonce': self.web3.eth.get_transaction_count(checksum_from_address),
         }
         
         try:
@@ -448,7 +458,7 @@ class StorageContract:
                         elif error_data.startswith('0x08c379a0'):
                             # Standard revert reason
                             try:
-                                from eth_abi import decode_single
+                                from eth_abi import decode as decode_single # type: ignore[attr-defined]
                                 reason = decode_single('string', bytes.fromhex(error_data[10:]))
                                 print(f"Revert reason: {reason}")
                             except:
@@ -473,13 +483,13 @@ class StorageContract:
             print(f"Transaction sent: {tx_hash.hex()}")
             
             # Wait for receipt
-            receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-            print(f"Transaction receipt: status={receipt.status}, gasUsed={receipt.gasUsed}")
-            
-            if receipt.status != 1:
-                raise Exception(f"Transaction failed with status: {receipt.status}")
-                
-            return tx_hash.hex()
+            receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+            print(f"Transaction receipt: status={receipt['status']}, gasUsed={receipt['gasUsed']}")
+
+            if receipt['status'] != 1:
+                raise Exception(f"Transaction failed with status: {receipt['status']}")
+
+            return cast(HexStr, tx_hash.hex())
             
         except Exception as e:
             raise Exception(f"Failed to delete bucket: {str(e)}")
@@ -494,11 +504,12 @@ class StorageContract:
             private_key: Private key for signing the transaction
         """
         # Build transaction
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
         tx = self.contract.functions.deleteFile(bucket_name, file_name).build_transaction({
-            'from': from_address,
+            'from': checksum_from_address,
             'gas': 500000,  # Gas limit
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(from_address)
+            'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
         })
         
         # Sign transaction
@@ -508,8 +519,8 @@ class StorageContract:
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
         # Wait for receipt
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt['status'] != 1:
             raise Exception("Transaction failed")
 
     def get_bucket(self, bucket_name: str) -> Tuple[str, int, HexAddress]:
@@ -521,7 +532,8 @@ class StorageContract:
         Returns:
             Tuple containing (bucket_name, created_at_timestamp, owner_address)
         """
-        return self.contract.functions.getBucket(bucket_name).call()
+        result = self.contract.functions.getBucket(bucket_name).call()
+        return cast(Tuple[str, int, HexAddress], result)
 
     def get_file(self, bucket_name: str, file_name: str) -> Tuple[str, bytes, int, int]:
         """Gets file information.
@@ -533,4 +545,5 @@ class StorageContract:
         Returns:
             Tuple containing (file_name, file_id, size, created_at_timestamp)
         """
-        return self.contract.functions.getFile(bucket_name, file_name).call()
+        result = self.contract.functions.getFile(bucket_name, file_name).call()
+        return cast(Tuple[str, bytes, int, int], result)
