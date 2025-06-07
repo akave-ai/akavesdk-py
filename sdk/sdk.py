@@ -40,7 +40,7 @@ class AkaveContractFetcher:
             self.stub = ipcnodeapi_pb2_grpc.IPCNodeAPIStub(self.channel)
             return True
         except grpc.RpcError as e:
-            logging.error(f"❌ gRPC error: {e.code()} - {e.details()}")
+            logging.error(f"❌ gRPC error: {getattr(e, 'code')()} - {getattr(e, 'details')()}")
             return False
         except Exception as e:
             logging.error(f"❌ Connection error: {type(e).__name__}: {str(e)}")

@@ -11,11 +11,13 @@ from typing import List, Optional, Union, Any, NewType
 from dataclasses import dataclass
 from datetime import datetime
 
+from multiformats.cid import CID as CIDType
+
 # Type definitions for domain-specific types
-try:
-    from multiformats.cid import CID as CIDType
-except ImportError:
-    CIDType = NewType('CID', str)
+# try:
+    # CIDType = NewType('CID', str)   
+# except ImportError:
+    # CIDType = NewType('CID', str)
 
 # Type for timestamp fields that could be different formats
 TimestampType = Union[datetime, float, int]
@@ -68,23 +70,24 @@ class FileBlockUpload:
 
     # Alias properties for backwards compatibility with uppercase naming
     @property
-    def CID(self):
+    def CID(self) -> str:
+        """Return the CID of the file block."""
         return self.cid
-        
+    
     @property
-    def Data(self):
+    def Data(self) -> bytes:
         return self.data
         
     @property
-    def NodeAddress(self):
+    def NodeAddress(self) -> str:
         return self.node_address
-        
+
     @property
-    def NodeID(self):
+    def NodeID(self) -> str:
         return self.node_id
-        
+
     @property
-    def Permit(self):
+    def Permit(self) -> bytes:
         return self.permit
 
 
@@ -208,7 +211,7 @@ class IPCFileMetaV2:
     bucket_name: str
     encoded_size: int
     size: int = 0
-    created_at: TimestampType = None
+    created_at: Optional[TimestampType] = None
     committed_at: Optional[TimestampType] = None
 
 

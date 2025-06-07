@@ -8,13 +8,17 @@ import multiformats.multihash as multihash
 class SPClient:
     """Client for communication with Filecoin Storage Provider (SP)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initializes the SPClient with a session for HTTP requests.
+        Sets up retry logic for handling transient errors.
+        """
         self.session = requests.Session()
         retries = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
         self.session.mount("http://", HTTPAdapter(max_retries=retries))
         self.session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    def close(self):
+    def close(self) -> None:
         """Closes the HTTP session."""
         self.session.close()
 
@@ -43,6 +47,6 @@ if __name__ == "__main__":
         block_cid = "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"  # Example CID
         base_url = "https://filecoin-provider.com"
         block_data = sp_client.fetch_block(base_url, block_cid)
-        print(f"Fetched block ({block_cid}): {block_data[:50]}...")  # Print first 50 bytes
+        print(f"Fetched block ({block_cid}): {block_data[:25].hex()}...")  # Print first 25 bytes
     finally:
         sp_client.close()

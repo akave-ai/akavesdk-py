@@ -12,6 +12,6 @@ __all__ = ['StorageContract', 'AccessManagerContract']
 
 # Example placeholder:
 # storage_abi = [...]
-# storage_bytecode = "0x..."
+# storage_bytecode = "0x...
 # access_manager_abi = [...]
 # access_manager_bytecode = "0x..." 

@@ -40,7 +40,7 @@ def encrypt(key: bytes, data: bytes, info: bytes) -> bytes:
     cipher, nonce = make_gcm_cipher(key, info)
     encryptor = cipher.encryptor()
     ciphertext = encryptor.update(data) + encryptor.finalize()
-    tag = encryptor.tag
+    tag = encryptor.tag # type: ignore[union-attr]
     encrypted_data = nonce + ciphertext + tag
     return cast(bytes, encrypted_data)
 

@@ -137,7 +137,6 @@ class Client:
         # Ensure these are correctly imported or defined
         try:
             # This assumes you have ABI/Bytecode defined in your contracts package/module
-            # from .contracts import storage_abi, storage_bytecode, access_manager_abi, access_manager_bytecode
             from .contracts import (
                 storage_abi, storage_bytecode,
                 access_manager_abi, access_manager_bytecode
