@@ -1,7 +1,7 @@
 import io
 import logging
 import concurrent.futures
-from typing import List, Optional, Dict, Any, Callable, BinaryIO, Tuple, Union
+from typing import List, Optional, Dict, Any, Callable, BinaryIO, Tuple
 import time
 from datetime import datetime
 import threading
@@ -14,7 +14,10 @@ import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from .common import SDKError
-from .model import FileMeta, FileListItem
+from .model import (
+    FileMeta,
+    FileListItem,
+)
 from .erasure_code import ErasureCode
 from private.pb import nodeapi_pb2
 from private.pb import nodeapi_pb2_grpc
@@ -101,21 +104,21 @@ class ConnectionPool:
         self.connections: Dict[str, Tuple[nodeapi_pb2_grpc.StreamAPIStub, grpc.Channel]] = {}
         self.lock = threading.Lock()
 
-    def create_streaming_client(self, address: str, use_pool: bool) -> Tuple[nodeapi_pb2_grpc.StreamAPIStub, Callable[[], None]]:
+    def create_streaming_client(self, address: str, use_pool: bool) -> Tuple[nodeapi_pb2_grpc.StreamAPIStub, Optional[Callable[[], None]]]:
         if not use_pool:
             channel = grpc.insecure_channel(address)
             client = nodeapi_pb2_grpc.StreamAPIStub(channel)
-            return client, lambda: channel.close()
+            return client, channel.close
         
         with self.lock:
             if address in self.connections:
                 client, _ = self.connections[address]
-                return client, lambda: None
+                return client, None
             
             channel = grpc.insecure_channel(address)
             client = nodeapi_pb2_grpc.StreamAPIStub(channel)
             self.connections[address] = (client, channel)
-            return client, lambda: None
+            return client, None
 
     def close(self) -> None:
         with self.lock:
