@@ -36,7 +36,10 @@ scripts/
 
 # macOS files
 .DS_Store
-
+NOTES
+*.toml
+scripts/
+*.lock
 # Windows files
 Thumbs.db
 ehthumbs.db
