@@ -12,7 +12,7 @@ import grpc # Add grpc import for error handling
 
 from .common import MIN_BUCKET_NAME_LENGTH, SDKError, BLOCK_SIZE, ENCRYPTION_OVERHEAD
 from .erasure_code import ErasureCode
-from .dag import build_dag, extract_block_data
+from .dag import build_dag, extract_block_data, DAGRoot
 from .connection import ConnectionPool
 from .model import (
     IPCBucketCreateResult, IPCBucket, IPCFileMeta, IPCFileListItem,
@@ -30,25 +30,6 @@ except ImportError:
 BlockSize = BLOCK_SIZE
 EncryptionOverhead = ENCRYPTION_OVERHEAD
 
-class DAGRoot:
-    def __init__(self):
-        self.links = []
-    
-    @classmethod
-    def new(cls):
-        return cls()
-    
-    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int):
-        self.links.append({
-            "cid": chunk_cid,
-            "raw_data_size": raw_data_size,
-            "proto_node_size": proto_node_size
-        })
-        return None
-    
-    def build(self):
-        root_cid = cidlib.make_cid(f"dag_root_{len(self.links)}")
-        return root_cid
 
 def encryption_key(parent_key: bytes, *info_data: str):
     if len(parent_key) == 0:

@@ -48,6 +48,11 @@ class DAGRoot:
         root_cid = CID("base32", DEFAULT_CID_VERSION, code, digest)
         return str(root_cid)
 
+    @classmethod
+    def new(cls) -> 'DAGRoot':
+        """Factory method to create a new DAGRoot instance."""
+        return cls()
+    
 @dataclass
 class ChunkDAG:
     cid: str
