@@ -64,10 +64,19 @@ class TestSDK(unittest.TestCase):
             self.sdk.view_bucket("")
 
     def test_delete_bucket(self):
+  
         self.mock_client.bucket_delete.return_value = None
+        self.sdk.delete_bucket("test_bucket")  
 
-        result = self.sdk.delete_bucket("test_bucket")
-        self.assertIsNone(result)
+       
+        with self.assertRaises(SDKError) as context:
+            self.sdk.delete_bucket("ab")  
+        self.assertIn("Invalid bucket name", str(context.exception))
+
+        self.mock_client.bucket_delete.side_effect = Exception("gRPC error")
+        with self.assertRaises(SDKError) as context:
+            self.sdk.delete_bucket("test_bucket")
+        self.assertIn("Failed to delete bucket", str(context.exception))
 
     def test_encryption_key_derivation(self):
         key = encryption_key_derivation(b"parent_key", "info1", "info2")

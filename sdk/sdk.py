@@ -91,14 +91,14 @@ class SDK:
         return Bucket(name=response.name, created_at=response.created_at)
 
     def delete_bucket(self, name:str):
-       # Call to gRPC API
-       try:
-           self.client.bucket_delete(nodeapi_pb2_grpc.NodeAPIStub.BucketDelete(name=name))
-       except SDKError as err:
-              logging.error(f"Error deleting bucket: {err}")
-              return False
-       
-   
+        if len(name) < MIN_BUCKET_NAME_LENGTH:
+            raise SDKError(f"Invalid bucket name. Must be at least {MIN_BUCKET_NAME_LENGTH} characters long")
+
+        try:
+            self.client.bucket_delete(nodeapi_pb2_grpc.NodeAPIStub.BucketDelete(name=name))
+        except Exception as e:
+            logging.error(f"Error deleting bucket '{name}': {str(e)}")
+            raise SDKError(f"Failed to delete bucket: {str(e)}")
 
     def extract_block_data(id_str: str, data: bytes) -> bytes:
         try:
