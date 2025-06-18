@@ -47,11 +47,6 @@ class DAGRoot:
         digest = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
         root_cid = CID("base32", DEFAULT_CID_VERSION, code, digest)
         return root_cid
-    
-    @classmethod
-    def new(cls) -> 'DAGRoot':
-        """Factory method to create a new DAGRoot instance."""
-        return cls()
 
     @classmethod
     def new(cls) -> 'DAGRoot':
