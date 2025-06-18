@@ -5,14 +5,15 @@ import io
 import math
 import concurrent.futures
 from hashlib import sha256
-from typing import List, Optional, Callable, Dict, Any, Union, Tuple
+from typing import List, Optional, Callable, Dict, Any, Union, Tuple, cast
 from google.protobuf.timestamp_pb2 import Timestamp
 from datetime import datetime
 import grpc # Add grpc import for error handling
+from multiformats.cid import CID as CIDType
 
 from .common import MIN_BUCKET_NAME_LENGTH, SDKError, BLOCK_SIZE, ENCRYPTION_OVERHEAD
 from .erasure_code import ErasureCode
-from .dag import build_dag, extract_block_data
+from .dag import build_dag, extract_block_data, DAGRoot, ChunkDAG
 from .connection import ConnectionPool
 from .model import (
     IPCBucketCreateResult, IPCBucket, IPCFileMeta, IPCFileListItem,
@@ -25,72 +26,84 @@ from private.pb import ipcnodeapi_pb2, ipcnodeapi_pb2_grpc
 try:
     from multiformats import cid as cidlib
 except ImportError:
-    pass
+    cidlib = None
 
 BlockSize = BLOCK_SIZE
 EncryptionOverhead = ENCRYPTION_OVERHEAD
 
-class DAGRoot:
-    def __init__(self):
-        self.links = []
-    
-    @classmethod
-    def new(cls):
-        return cls()
-    
-    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int):
-        self.links.append({
-            "cid": chunk_cid,
-            "raw_data_size": raw_data_size,
-            "proto_node_size": proto_node_size
-        })
-        return None
-    
-    def build(self):
-        root_cid = cidlib.make_cid(f"dag_root_{len(self.links)}")
-        return root_cid
 
-def encryption_key(parent_key: bytes, *info_data: str):
+
+def encryption_key(parent_key: bytes, *info_data: str) -> bytes:
+    """
+    Derives an encryption key based on the parent key and additional info data.
+    The info_data is concatenated and used to derive a new key.
+    """
     if len(parent_key) == 0:
         return b''
     
     info = "/".join(info_data)
     return derive_key(parent_key, info.encode())
 
-def to_ipc_proto_chunk(chunk_cid: str, index: int, size: int, blocks):
-    cids = []
-    sizes = []
+# def to_ipc_proto_chunk(chunk_cid: str, index: int, size: int, blocks):
+#     cids = []
+#     sizes = []
     
-    pb_blocks = []
-    for block in blocks:
-        pb_block = {
-            "cid": block["cid"],
-            "size": len(block["data"])
-        }
-        pb_blocks.append(pb_block)
+#     pb_blocks = []
+#     for block in blocks:
+#         pb_block = {
+#             "cid": block["cid"],
+#             "size": len(block["data"])
+#         }
+#         pb_blocks.append(pb_block)
         
-        try:
-            c = cidlib.decode(block["cid"])
-            b_cid = bytearray(32)
-            cid_bytes = c.buffer if hasattr(c, 'buffer') else c._buffer
-            copy_len = min(len(cid_bytes) - 4, 32)
-            b_cid[:copy_len] = cid_bytes[4:4+copy_len]
-            cids.append(b_cid)
-            sizes.append(len(block["data"]))
-        except Exception as e:
-            return None, None, None, SDKError(f"failed to decode CID: {str(e)}")
+#         try:
+#             c = cidlib.decode(block["cid"])
+#             b_cid = bytearray(32)
+#             cid_bytes = c.buffer if hasattr(c, 'buffer') else c._buffer
+#             copy_len = min(len(cid_bytes) - 4, 32)
+#             b_cid[:copy_len] = cid_bytes[4:4+copy_len]
+#             cids.append(b_cid)
+#             sizes.append(len(block["data"]))
+#         except Exception as e:
+#             return None, None, None, SDKError(f"failed to decode CID: {str(e)}")
     
-    proto_chunk = {
-        "cid": chunk_cid,
-        "index": index,
-        "size": size,
-        "blocks": pb_blocks
-    }
+#     proto_chunk = {
+#         "cid": chunk_cid,
+#         "index": index,
+#         "size": size,
+#         "blocks": pb_blocks
+#     }
     
-    return cids, sizes, proto_chunk, None
+#     return cids, sizes, proto_chunk, None
+
+
+def to_ipc_proto_chunk(chunk_cid: str, index: int, size: int, blocks: List[FileBlockUpload]) -> ipcnodeapi_pb2.IPCChunk:
+    pb_blocks: List[ipcnodeapi_pb2.IPCChunk.Block] = []
+    for block in blocks:
+        pb_blocks.append(
+            ipcnodeapi_pb2.IPCChunk.Block(cid=block.cid, size=len(block.data))
+        )
+
+    return ipcnodeapi_pb2.IPCChunk(
+        cid=chunk_cid,
+        index=index,
+        size=size,
+        blocks=pb_blocks
+    )
 
 class IPC:
-    def __init__(self, client, conn, ipc_instance, max_concurrency, block_part_size, use_connection_pool, encryption_key=None, max_blocks_in_chunk=32, erasure_code=None):
+    def __init__(
+            self, 
+            client: Optional[ipcnodeapi_pb2_grpc.IPCNodeAPIStub], 
+            conn: Optional[grpc.Channel], 
+            ipc_instance: Any, 
+            max_concurrency: int, 
+            block_part_size: int, 
+            use_connection_pool: bool, 
+            encryption_key: Optional[bytes] = None, 
+            max_blocks_in_chunk: int = 32, 
+            erasure_code: Optional[ErasureCode] = None
+        ) -> None:
         self.client = client
         self.conn = conn
         self.ipc = ipc_instance
@@ -101,42 +114,38 @@ class IPC:
         self.max_blocks_in_chunk = max_blocks_in_chunk
         self.erasure_code = erasure_code
 
-    def create_bucket(self, ctx, name: str) -> IPCBucketCreateResult:
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
+
+
+    def create_bucket(self, ctx: Any, name: str) -> IPCBucketCreateResult:
         if len(name) < MIN_BUCKET_NAME_LENGTH:
             raise SDKError("invalid bucket name")
 
         try:
-            # Create bucket using the storage contract
             tx = self.ipc.storage.create_bucket(
-                bucket_name=name,
-                from_address=self.ipc.auth.address,
-                private_key=self.ipc.auth.key,
-                gas_limit=500000
+                bucket_name=name, from_address=self.ipc.auth.address,
+                private_key=self.ipc.auth.key, gas_limit=500000
             )
-            
-            # Get transaction receipt
             receipt = self.ipc.web3.eth.wait_for_transaction_receipt(tx)
             
-            # Check if transaction was successful
-            if receipt.status != 1:
-                raise SDKError("bucket creation transaction failed")
+            if receipt['status'] != 1: raise SDKError("bucket creation transaction failed")
                 
-            # Get creation timestamp from block
-            block = self.ipc.web3.eth.get_block(receipt.blockNumber)
-            created_at = block.timestamp
+            block = self.ipc.web3.eth.get_block(receipt['blockNumber'])
+            created_at = block['timestamp']
             
-            return IPCBucketCreateResult(
-                name=name,
-                created_at=created_at
-            )
-            
+            return IPCBucketCreateResult(name=name, created_at=created_at)
         except Exception as e:
-            logging.error(f"IPC create_bucket failed: {e}")
             raise SDKError(f"bucket creation failed: {e}")
+        
 
-    def view_bucket(self, ctx, bucket_name: str) -> Optional[IPCBucket]:
+    def view_bucket(self, ctx: Any, bucket_name: str) -> Optional[IPCBucket]:
         if not bucket_name:
             raise SDKError("empty bucket name")
+        
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
+
 
         try:
             request = ipcnodeapi_pb2.IPCBucketViewRequest(
@@ -165,7 +174,9 @@ class IPC:
             logging.error(f"IPC view_bucket unexpected error: {err}")
             raise SDKError(f"failed to view bucket: {err}")
 
-    def list_buckets(self, ctx) -> list[IPCBucket]:
+    def list_buckets(self, ctx: Any) -> List[IPCBucket]:
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
         try:
             request = ipcnodeapi_pb2.IPCBucketListRequest(
                 address=self.ipc.auth.address.lower()
@@ -199,7 +210,9 @@ class IPC:
             logging.error(f"IPC list_buckets unexpected error: {err}")
             raise SDKError(f"failed to list buckets: {err}")
 
-    def delete_bucket(self, ctx, name: str) -> None:
+    def delete_bucket(self, ctx: Any, name: str) -> None:
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
         if not name:
             raise SDKError("empty bucket name")
         try:
@@ -249,7 +262,10 @@ class IPC:
             logging.error(f"IPC delete_bucket failed: {err}")
             raise SDKError(f"failed to delete bucket: {err}")
 
-    def file_info(self, ctx, bucket_name: str, file_name: str) -> Optional[IPCFileMeta]:
+    def file_info(self, ctx: Any, bucket_name: str, file_name: str) -> Optional[IPCFileMeta]:
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
+        
         if not bucket_name:
             raise SDKError("empty bucket name")
         
@@ -289,7 +305,10 @@ class IPC:
             logging.error(f"IPC file_info unexpected error: {err}")
             raise SDKError(f"failed to get file info: {err}")
 
-    def list_files(self, ctx, bucket_name: str) -> list[IPCFileListItem]:
+    def list_files(self, ctx: Any, bucket_name: str) -> list[IPCFileListItem]:
+        if self.client is None:
+            raise SDKError("IPC client has not been initialized.")
+        
         if not bucket_name:
             raise SDKError("empty bucket name")
 
@@ -331,7 +350,7 @@ class IPC:
             logging.error(f"IPC list_files unexpected error: {err}")
             raise SDKError(f"failed to list files: {err}")
 
-    def file_delete(self, ctx, bucket_name: str, file_name: str) -> None:
+    def file_delete(self, ctx: Any, bucket_name: str, file_name: str) -> None:
         if not bucket_name.strip() or not file_name.strip():
             raise SDKError(f"empty bucket or file name. Bucket: '{bucket_name}', File: '{file_name}'")
 
@@ -349,7 +368,7 @@ class IPC:
             logging.error(f"IPC file_delete failed: {err}")
             raise SDKError(f"failed to delete file: {err}")
 
-    def create_file_upload(self, ctx, bucket_name: str, file_name: str) -> None:
+    def create_file_upload(self, ctx: Any, bucket_name: str, file_name: str) -> None:
         if not bucket_name:
             raise SDKError("empty bucket name")
 
@@ -375,7 +394,7 @@ class IPC:
             logging.error(f"IPC create_file_upload failed: {err}")
             raise SDKError(f"failed to create file upload: {err}")
 
-    def upload(self, ctx, bucket_name: str, file_name: str, reader: io.IOBase) -> IPCFileMetaV2:
+    def upload(self, ctx: Any, bucket_name: str, file_name: str, reader: io.IOBase) -> IPCFileMetaV2:
         try:
             bucket = self.ipc.storage.get_bucket_by_name(
                 {"from": self.ipc.auth.address},
@@ -410,7 +429,7 @@ class IPC:
                     raise SDKError("context cancelled")
                 
                 try:
-                    n = reader.readinto(buf)
+                    n = reader.readinto(buf) # type: ignore[attr-defined]
                     if n == 0:
                         if is_empty_file:
                             raise SDKError("empty file")
@@ -426,7 +445,7 @@ class IPC:
                 chunk_upload = self.create_chunk_upload(ctx, i, file_enc_key, buf[:n], bucket.id, file_name)
                 file_size += chunk_upload.actual_size
                 
-                dag_root.add_link(chunk_upload.chunk_cid, chunk_upload.raw_data_size, chunk_upload.proto_node_size)
+                dag_root.add_link(str(chunk_upload.chunk_cid), chunk_upload.raw_data_size, chunk_upload.proto_node_size)
                 
                 self.upload_chunk(ctx, chunk_upload)
                 
@@ -435,7 +454,7 @@ class IPC:
             root_cid = dag_root.build()
             
             try:
-                logging.info(f"Committing file {bucket_name}/{file_name} with size {file_size} and root CID {root_cid.toString()}")
+                logging.info(f"Committing file {bucket_name}/{file_name} with size {file_size} and root CID {root_cid}")
                 self.ipc.storage.commit_file(
                     bucket_name,
                     file_name,
@@ -456,7 +475,7 @@ class IPC:
                 return IPCFileMetaV2(
                     root_cid=root_cid.toString(),
                     bucket_name=bucket_name,
-                    name=file_name,
+                    # name=file_name,
                     encoded_size=file_size,
                     created_at=0,
                     committed_at=committed_at_ts
@@ -465,7 +484,7 @@ class IPC:
             return IPCFileMetaV2(
                 root_cid=file_meta_info.root_cid,
                 bucket_name=file_meta_info.bucket_name,
-                name=file_meta_info.name,
+                # name=file_meta_info.name,
                 encoded_size=file_meta_info.encoded_size,
                 created_at=file_meta_info.created_at,
                 committed_at=committed_at_ts
@@ -473,76 +492,55 @@ class IPC:
         except Exception as err:
             raise SDKError(f"failed to upload file: {str(err)}")
 
-    def create_chunk_upload(self, ctx, index: int, file_encryption_key: bytes, data: bytes, bucket_id, file_name: str) -> IPCFileChunkUploadV2:
+    def create_chunk_upload(self, ctx: Any, index: int, file_encryption_key: bytes, data: bytes, bucket_id: bytes, file_name: str) -> IPCFileChunkUploadV2:
+        if not self.client: raise SDKError("IPC client not initialized")
         try:
-            if len(file_encryption_key) > 0:
+            if file_encryption_key:
                 data = encrypt(file_encryption_key, data, str(index).encode())
             
             size = len(data)
+            block_size = int(BlockSize)
             
-            block_size = BlockSize
             if self.erasure_code:
                 data = self.erasure_code.encode(data)
-                blocks_count = self.erasure_code.data_blocks + self.erasure_code.parity_blocks
-                block_size = len(data) // blocks_count
+                block_size = len(data) // (self.erasure_code.data_blocks + self.erasure_code.parity_blocks)
             
-            chunk_dag = build_dag(ctx, io.BytesIO(data), block_size)
+            chunk_dag: ChunkDAG = build_dag(ctx, io.BytesIO(data), block_size)
             
-            cids, sizes, proto_chunk, _ = to_ipc_proto_chunk(
-                chunk_dag.cid.string(),
-                index,
-                size,
-                chunk_dag.blocks
-            )
+            proto_chunk = to_ipc_proto_chunk(str(chunk_dag.cid), index, size, chunk_dag.blocks)
             
-            request = ipcnodeapi_pb2.IPCFileUploadChunkCreateRequest(
-                chunk=ipcnodeapi_pb2.IPCChunk(
-                    cid=proto_chunk["cid"],
-                    index=proto_chunk["index"],
-                    size=proto_chunk["size"],
-                    blocks=[
-                        ipcnodeapi_pb2.IPCChunk.Block(
-                            cid=block["cid"],
-                            size=block["size"]
-                        ) for block in proto_chunk["blocks"]
-                    ]
-                ),
-                bucket_id=bucket_id,
-                file_name=file_name
-            )
-            
+            request = ipcnodeapi_pb2.IPCFileUploadChunkCreateRequest(chunk=proto_chunk, bucket_id=bucket_id, file_name=file_name)
             response = self.client.FileUploadChunkCreate(request)
-            
+
             if len(response.blocks) != len(chunk_dag.blocks):
                 raise SDKError(f"received unexpected amount of blocks {len(response.blocks)}, expected {len(chunk_dag.blocks)}")
-            
-            for i, upload in enumerate(response.blocks):
-                if chunk_dag.blocks[i]["cid"] != upload.cid:
+
+            for i, upload_resp in enumerate(response.blocks):
+                block = chunk_dag.blocks[i]
+                if block.cid != upload_resp.cid:
                     raise SDKError(f"block CID mismatch at position {i}")
-                chunk_dag.blocks[i]["node_address"] = upload.node_address
-                chunk_dag.blocks[i]["node_id"] = upload.node_id
-                chunk_dag.blocks[i]["permit"] = upload.permit
-            
+
+                block.node_address = upload_resp.node_address
+                block.node_id = upload_resp.node_id
+                block.permit = upload_resp.permit.encode() # Assuming permit is string in proto
+
+
             return IPCFileChunkUploadV2(
-                index=index,
-                chunk_cid=chunk_dag.cid,
-                actual_size=size,
-                raw_data_size=chunk_dag.raw_data_size,
+                index=index, chunk_cid=cast(CIDType, chunk_dag.cid),
+                actual_size=size, raw_data_size=chunk_dag.raw_data_size,
                 proto_node_size=chunk_dag.proto_node_size,
-                blocks=chunk_dag.blocks,
-                bucket_id=bucket_id,
-                file_name=file_name
+                blocks=chunk_dag.blocks, bucket_id=bucket_id, file_name=file_name
             )
         except Exception as err:
-            raise SDKError(f"failed to create chunk upload: {str(err)}")
+            raise SDKError(f"failed to create chunk upload: {err}")
 
-    def upload_chunk(self, ctx, file_chunk_upload: IPCFileChunkUploadV2) -> None:
+    def upload_chunk(self, ctx: Any, file_chunk_upload: IPCFileChunkUploadV2) -> None:
         try:
             pool = ConnectionPool()
             
             try:
                 _, _, proto_chunk, _ = to_ipc_proto_chunk(
-                    file_chunk_upload.chunk_cid.string(),
+                    file_chunk_upload.chunk_cid,
                     file_chunk_upload.index,
                     file_chunk_upload.actual_size,
                     file_chunk_upload.blocks
@@ -574,6 +572,9 @@ class IPC:
             client, closer, err = pool.create_ipc_client(block["node_address"], self.use_connection_pool)
             if err:
                 raise SDKError(f"failed to create client: {str(err)}")
+
+            if not client:
+                raise SDKError("IPC client is not available")
             
             try:
                 block_data = ipcnodeapi_pb2.IPCFileBlockData(
@@ -613,6 +614,9 @@ class IPC:
             client, closer, err = pool.create_ipc_client(block.akave.node_address, self.use_connection_pool)
             if err:
                 raise SDKError(f"failed to create client: {str(err)}")
+            
+            if not client:
+                raise SDKError("IPC client is not available")
             
             try:
                 download_req = {
@@ -661,6 +665,9 @@ class IPC:
                 
             if not file_name:
                 raise SDKError("empty file name")
+            
+            if not self.client:
+                raise SDKError("IPC client has not been initialized.")
                 
             request = ipcnodeapi_pb2.IPCFileDownloadCreateRequest(
                 bucket_name=bucket_name,
@@ -721,6 +728,9 @@ class IPC:
             raise SDKError(f"failed to download file: {str(err)}")
             
     def create_chunk_download(self, ctx, bucket_name: str, file_name: str, chunk):
+        if not self.client:
+            raise SDKError("IPC client has not been initialized.")
+        
         try:
             request = ipcnodeapi_pb2.IPCFileDownloadChunkCreateRequest(
                 bucket_name=bucket_name,

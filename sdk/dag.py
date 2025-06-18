@@ -33,20 +33,25 @@ class DAGRoot:
         
         self.links.append(link)
         
-    def build(self) -> str:
+    def build(self) -> CID:
         if not self.links:
             raise DAGError("No chunks added")
             
         if len(self.links) == 1:
             # If there's only one link, just return its CID
             # Note: Here hash is actually the CID of the single node
-            return str(self.links[0].hash)
-            
+            return self.links[0].hash
+
         root_node = PBNode(data=None, links=self.links)
         encoded_node = encode(root_node)
         digest = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
         root_cid = CID("base32", DEFAULT_CID_VERSION, code, digest)
-        return str(root_cid)
+        return root_cid
+    
+    @classmethod
+    def new(cls) -> 'DAGRoot':
+        """Factory method to create a new DAGRoot instance."""
+        return cls()
 
 @dataclass
 class ChunkDAG:
@@ -108,7 +113,7 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
         proto_node_size = total_proto_size
     
     return ChunkDAG(
-        cid=root_cid,
+        cid=str(root_cid),
         raw_data_size=total_raw_size,
         proto_node_size=proto_node_size,
         blocks=blocks

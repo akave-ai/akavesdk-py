@@ -13,12 +13,6 @@ from datetime import datetime
 
 from multiformats.cid import CID as CIDType
 
-# Type definitions for domain-specific types
-# try:
-    # CIDType = NewType('CID', str)   
-# except ImportError:
-    # CIDType = NewType('CID', str)
-
 # Type for timestamp fields that could be different formats
 TimestampType = Union[datetime, float, int]
 
