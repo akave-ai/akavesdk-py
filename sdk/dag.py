@@ -53,6 +53,11 @@ class DAGRoot:
         """Factory method to create a new DAGRoot instance."""
         return cls()
 
+    @classmethod
+    def new(cls) -> 'DAGRoot':
+        """Factory method to create a new DAGRoot instance."""
+        return cls()
+    
 @dataclass
 class ChunkDAG:
     cid: str
