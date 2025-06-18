@@ -1,6 +1,6 @@
 import io
 import os
-from typing import List, Tuple, Dict, Optional, Any, BinaryIO
+from typing import List, Tuple, Dict, Optional, Any, BinaryIO, cast
 from dataclasses import dataclass
 from ipld_dag_pb import PBNode, PBLink, encode, decode, code
 from multiformats import multihash, CID
@@ -39,8 +39,8 @@ class DAGRoot:
             
         if len(self.links) == 1:
             # If there's only one link, just return its CID
-            # Note: Here hash is actually the CID of the single node
-            return self.links[0].hash
+            # PBLink.hash is untyped, so we cast it to CID for type safety
+            return cast(CID, self.links[0].hash)
 
         root_node = PBNode(data=None, links=self.links)
         encoded_node = encode(root_node)
@@ -71,26 +71,22 @@ def split_into_chunks(reader: BinaryIO, block_size: int) -> List[bytes]:
 
 def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[bytes] = None) -> ChunkDAG:
     chunks = split_into_chunks(reader, block_size)
-    blocks = []
+    blocks: List[FileBlockUpload] = []
     
     total_raw_size = 0
     total_proto_size = 0
     
     for i, chunk_data in enumerate(chunks):
-        processed_chunk_data: bytes
         if enc_key:
-            # Note: The original encryption logic was missing the nonce, which is required for GCM mode.
-            # Assuming encryption function handles or returns it. A simple call would be:
             processed_chunk_data = encrypt(enc_key, chunk_data, str(i).encode())
         else:
             processed_chunk_data = chunk_data
-        
+
         node: PBNode = PBNode(data=processed_chunk_data)
         encoded_node: bytes = encode(node)
         digest: bytes = multihash.digest(encoded_node, DEFAULT_HASH_FUNC)
         block_cid: CID = CID("base32", DEFAULT_CID_VERSION, code, digest)
-        current_chunk_raw_size = len(processed_chunk_data) 
-        total_raw_size += current_chunk_raw_size
+        total_raw_size += len(processed_chunk_data)
         total_proto_size += len(encoded_node)
         blocks.append(FileBlockUpload(
             cid=str(block_cid),
@@ -101,8 +97,9 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
         raise DAGError("No blocks created, file may be empty")
     
     if len(blocks) == 1:
-        root_cid = blocks[0].cid
-        proto_node_size = len(blocks[0].data)
+        # Decode back into CID so our return type is consistent
+        root_cid: CID = CID.decode(blocks[0].cid)
+        proto_node_size: int = len(blocks[0].data)
     else:
         dag_root = DAGRoot()
         for block in blocks:
@@ -118,6 +115,7 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
         proto_node_size=proto_node_size,
         blocks=blocks
     )
+
 
 def extract_block_data(id_str: str, data: bytes) -> bytes:
     try:

@@ -248,8 +248,12 @@ class StreamingAPI:
                 chunk_upload = self._create_chunk_upload(ctx, upload, chunk_index, file_enc_key, buf[:n])
                 
                 # Add link to DAG root
-                self._add_dag_link(dag_root, chunk_upload.ChunkCID, chunk_upload.RawDataSize, chunk_upload.ProtoNodeSize)
-                
+                dag_root.add_link(
+                    chunk_upload.chunk_cid,
+                    chunk_upload.raw_data_size,
+                    chunk_upload.proto_node_size
+                )
+                            
                 # Upload chunk
                 self._upload_chunk(ctx, chunk_upload)
                 
@@ -303,7 +307,7 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to create file download range: {str(err)}")
     
-    def download(self, ctx, file_download: FileDownload, writer: BinaryIO) -> None:
+    def download(self, ctx: Any, file_download: FileDownload, writer: BinaryIO) -> None:
         try:
             file_enc_key = b''
             if self.encryption_key:
@@ -325,7 +329,7 @@ class StreamingAPI:
             raise SDKError(f"failed to download file: {str(err)}")
     
 
-    def download_v2(self, ctx, file_download: FileDownload, writer: BinaryIO) -> None:
+    def download_v2(self, ctx: Any, file_download: FileDownload, writer: BinaryIO) -> None:
         try:
             file_enc_key = b''
             if self.encryption_key:
@@ -347,7 +351,7 @@ class StreamingAPI:
             raise SDKError(f"failed to download file: {str(err)}")
     
 
-    def download_random(self, ctx, file_download: FileDownload, writer: BinaryIO) -> None:
+    def download_random(self, ctx: Any, file_download: FileDownload, writer: BinaryIO) -> None:
         if self.erasure_code is None:
             raise SDKError("erasure coding is not enabled")
         
@@ -653,11 +657,16 @@ class StreamingAPI:
             blocks=blocks
         )
     
-    def _create_chunk_download_v2(self, ctx, stream_id, chunk):
+    def _create_chunk_download_v2(
+        self,
+        ctx: Any,
+        stream_id: str,
+        chunk: Chunk
+    ) -> FileChunkDownload:
         # TODO: Implement chunk download v2 creation
         request = nodeapi_pb2.StreamFileDownloadChunkCreateRequest(
             stream_id=stream_id,
-            chunk_cid=chunk.CID
+            chunk_cid=chunk.cid
         )
         
         res = self.client.FileDownloadChunkCreateV2(request)
@@ -742,7 +751,16 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to download chunk blocks: {str(err)}")
     
-    def _download_random_chunk_blocks(self, ctx, stream_id, chunk_download, file_encryption_key, writer):
+    def _download_random_chunk_blocks(
+        self,
+        ctx: Any,
+        stream_id: str,
+        chunk_download: FileChunkDownload,
+        file_encryption_key: bytes,
+        writer: BinaryIO
+    ) -> None:
+        if self.erasure_code is None:
+            raise SDKError("erasure coding is not enabled")
         try:
             # Create a connection pool
             pool = ConnectionPool()
@@ -753,7 +771,7 @@ class StreamingAPI:
                     futures = {}
                     
                     # Create a map of all blocks
-                    blocks_map = {i: block for i, block in enumerate(chunk_download.Blocks)}
+                    blocks_map = {i: block for i, block in enumerate(chunk_download.blocks)}
                     
                     # Get the block indexes and randomize them
                     block_indexes = list(blocks_map.keys())
