@@ -128,7 +128,7 @@ class AccessManagerContract:
             }
         ]
 
-        self.contract: Contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
+        self.contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def change_public_access(self, file_id: bytes, is_public: bool, from_address: HexAddress) -> None:
         """Changes the public access status of a file.

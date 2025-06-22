@@ -107,7 +107,7 @@ class PolicyContract:
             }
         ]
 
-        self.contract: Contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
+        self.contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def add_user_access(self, file_id: bytes, user: HexAddress, from_address: HexAddress) -> None:
         """Grants access to a file for a specific user.

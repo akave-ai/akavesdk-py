@@ -198,9 +198,9 @@ class SDK:
 
     def close(self) -> None:
         """Close the gRPC channels."""
-        if self.conn:
+        if self.conn is not None:
             self.conn.close()
-        if self.ipc_conn and self.ipc_conn != self.conn:
+        if self.ipc_conn is not None and self.ipc_conn != self.conn:
             self.ipc_conn.close()
 
     def streaming_api(self) -> StreamingAPI:

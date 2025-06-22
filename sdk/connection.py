@@ -21,7 +21,7 @@ class ConnectionPool:
         conn = self._new_connection(addr)
         if conn is None:
             return None, None, Exception("Failed to create connection")
-        return nodeapi_pb2_grpc.NodeAPIStub(conn), lambda: conn.close(), None
+        return nodeapi_pb2_grpc.NodeAPIStub(conn), (lambda: conn.close() if conn is not None else None), None
 
     def create_ipc_client(self, addr: str, pooled: bool) -> Tuple[Optional[ipcnodeapi_pb2_grpc.IPCNodeAPIStub], Optional[Callable[[], None]], Optional[Exception]]:
         if pooled:
@@ -33,7 +33,7 @@ class ConnectionPool:
         conn = self._new_connection(addr)
         if conn is None:
             return None, None, Exception("Failed to create connection")
-        return ipcnodeapi_pb2_grpc.IPCNodeAPIStub(conn), lambda: conn.close(), None
+        return ipcnodeapi_pb2_grpc.IPCNodeAPIStub(conn), (lambda: conn.close() if conn is not None else None), None
 
     def get(self, addr: str) -> Optional[grpc.Channel]:
         """Retrieves an existing gRPC connection from the pool."""

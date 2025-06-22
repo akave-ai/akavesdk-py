@@ -77,7 +77,7 @@ class Client:
             A new IPC client instance
         """
         # Initialize Web3 using HTTP provider
-        web3 = Web3(Web3.HTTPProvider(config.dial_uri))
+        web3: Web3 = Web3(Web3.HTTPProvider(config.dial_uri))
         if not web3.is_connected():
             raise ConnectionError(f"Failed to connect to Ethereum node at {config.dial_uri}")
 
@@ -87,16 +87,19 @@ class Client:
 
         # Create account from private key
         try:
-            account = Account.from_key(config.private_key)
+            account: LocalAccount = cast(
+                LocalAccount,
+                Account.from_key(config.private_key)
+            )
         except ValueError as e:
             raise ValueError(f"Invalid private key: {e}") from e
 
         # Initialize contracts
-        storage_addr = cast(HexAddress, config.storage_contract_address)
-        storage = StorageContract(web3, storage_addr)
+        storage_addr: HexAddress = cast(HexAddress, config.storage_contract_address)
+        storage: StorageContract = StorageContract(web3, storage_addr)
         access_manager = None
         if config.access_contract_address:
-            access_addr = cast(HexAddress, config.access_contract_address)
+            access_addr: HexAddress = cast(HexAddress, config.access_contract_address)
             access_manager = AccessManagerContract(web3, access_addr)
 
         return cls(web3, account, storage, access_manager)
@@ -129,7 +132,10 @@ class Client:
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         try:
-            account: LocalAccount = Account.from_key(config.private_key)
+            account: LocalAccount = cast(
+                LocalAccount,
+                Account.from_key(config.private_key)
+            )
         except ValueError as e:
             raise ValueError(f"Invalid private key: {e}") from e
             
@@ -138,8 +144,10 @@ class Client:
         try:
             # This assumes you have ABI/Bytecode defined in your contracts package/module
             from .contracts import (
-                storage_abi, storage_bytecode,
-                access_manager_abi, access_manager_bytecode
+                storage_abi,      # type: ignore[missing-module-attribute]
+                storage_bytecode, # type: ignore[missing-module-attribute]
+                access_manager_abi,      # type: ignore[missing-module-attribute]
+                access_manager_bytecode  # type: ignore[missing-module-attribute]
             )
         except ImportError:
             raise ImportError("Storage/AccessManager ABI and Bytecode not found. Ensure they are defined in akavesdk-py/private/ipc/contracts.")

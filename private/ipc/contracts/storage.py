@@ -244,7 +244,7 @@ class StorageContract:
             }
         ]
         
-        self.contract: Contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
+        self.contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def get_access_manager(self) -> HexAddress:
         """Gets the address of the associated access manager contract.
@@ -283,7 +283,7 @@ class StorageContract:
         tx = self.contract.functions.createBucket(bucket_name).build_transaction(tx_params)
         
         # Sign transaction
-        signed_tx = Account.sign_transaction(tx, private_key)
+        signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
         
         # Send raw transaction
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
@@ -323,7 +323,7 @@ class StorageContract:
         })
         
         # Sign transaction
-        signed_tx = Account.sign_transaction(tx, private_key)
+        signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
         
         # Send raw transaction
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
@@ -364,8 +364,8 @@ class StorageContract:
         })
         
         # Sign transaction
-        signed_tx = Account.sign_transaction(tx, private_key)
-        
+        signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
+
         # Send raw transaction
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
@@ -513,8 +513,8 @@ class StorageContract:
         })
         
         # Sign transaction
-        signed_tx = Account.sign_transaction(tx, private_key)
-        
+        signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
+
         # Send raw transaction
         tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         

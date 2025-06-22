@@ -1,7 +1,7 @@
 import io
 import logging
 import concurrent.futures
-from typing import List, Optional, Dict, Any, Callable, BinaryIO, Tuple
+from typing import List, Optional, Dict, Any, Callable, BinaryIO, Tuple, Iterator
 import time
 from datetime import datetime
 import threading
@@ -23,9 +23,9 @@ from private.pb import nodeapi_pb2
 from private.pb import nodeapi_pb2_grpc
 from private.spclient.spclient import SPClient
 from private.encryption import encrypt, decrypt, derive_key
-from sdk.dag import build_dag, extract_block_data
+from sdk.dag import build_dag, extract_block_data, DAGRoot
 
-from multiformats import cid as cidlib
+from multiformats import cid as cidlib, CID
 
 
 logger = logging.getLogger(__name__)
@@ -63,26 +63,6 @@ class ConnectionPool:
             self.connections = {}
         return None
 
-class DAGRoot:
-    def __init__(self) -> None:
-        self.links: List[Dict[str, Any]] = []
-    
-    @classmethod
-    def new(cls) -> 'DAGRoot':
-        """Create a new DAG root instance."""
-        return cls()
-
-    def add_link(self, chunk_cid: str, raw_data_size: int, proto_node_size: int) -> None:
-        self.links.append({
-            "cid": chunk_cid,
-            "raw_data_size": raw_data_size,
-            "proto_node_size": proto_node_size
-        })
-        return None
-    
-    def build(self) -> Any:
-        cid_str = "Qm" + base64.b32encode(os.urandom(32)).decode('utf-8')
-        return type('CID', (), {'string': lambda *args: cid_str})()
 
 def encryption_key(parent_key: bytes, *info_data: str) -> bytes:
     if len(parent_key) == 0:
@@ -245,7 +225,9 @@ class StreamingAPI:
                 is_empty_file = False
                 
                 # Create chunk upload
-                chunk_upload = self._create_chunk_upload(ctx, upload, chunk_index, file_enc_key, buf[:n])
+                data_chunk: bytes = bytes(buf[:n])              # ← explicit conversion
+                chunk_upload: FileChunkUpload = self._create_chunk_upload(ctx, upload, chunk_index, file_enc_key, data_chunk)
+
                 
                 # Add link to DAG root
                 dag_root.add_link(
@@ -286,7 +268,9 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to create file download: {str(err)}")
     
-    def create_range_file_download(self, ctx: Any, bucket_name: str, file_name: str, start: int, end: int) -> FileDownload:
+    def create_range_file_download(
+        self, ctx: Any, bucket_name: str, file_name: str, start: int, end: int
+    ) -> FileDownload:
         try:
             request = nodeapi_pb2.StreamFileDownloadRangeCreateRequest(
                 bucket_name=bucket_name,
@@ -375,7 +359,7 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to download file: {str(err)}")
     
-    def file_delete(self, ctx, bucket_name: str, file_name: str) -> None:
+    def file_delete(self, ctx: Any, bucket_name: str, file_name: str) -> None:
         try:
             request = nodeapi_pb2.StreamFileDeleteRequest(
                 bucket_name=bucket_name,
@@ -422,10 +406,7 @@ class StreamingAPI:
         return dag_root.add_link(chunk_cid, raw_size, proto_node_size)
     
     def _build_dag_root(self, dag_root: DAGRoot) -> str:
-        """Build the DAG root and return its CID"""
-        root_cid = dag_root.build()
-        if hasattr(root_cid, 'string') and callable(root_cid.string):
-            return str(root_cid.string())
+        root_cid: CID = dag_root.build()
         return str(root_cid)
     
     def _create_chunk_upload(self, ctx: Any, file_upload: FileUpload, index: int, file_encryption_key: bytes, data: bytes) -> FileChunkUpload:
@@ -552,7 +533,7 @@ class StreamingAPI:
                     data = data.tobytes()
                 
                 # Create a request iterator for the streaming call
-                def request_iterator():
+                def request_iterator() -> Iterator[nodeapi_pb2.StreamFileBlockData]:
                     # First send the metadata
                     block_segment = nodeapi_pb2.StreamFileBlockData(
                         cid=block.cid,
@@ -718,23 +699,25 @@ class StreamingAPI:
                         )] = i
                     
                     # Collect results and organize them by position
-                    blocks: List[Optional[bytes]] = [None] * len(chunk_download.blocks)
+                    blocks: List[Optional[bytes]] = [None for _ in range(len(chunk_download.blocks))]
                     for future in concurrent.futures.as_completed(futures):
-                        index = futures[future]
+                        idx = futures[future]
                         try:
                             # Extract data from the block
                             data = future.result()
-                            blocks[index] = extract_block_data(chunk_download.blocks[index].cid, data)
+                            blocks[idx] = extract_block_data(chunk_download.blocks[idx].cid, data)
                         except Exception as e:
                             raise SDKError(f"failed to download block: {str(e)}")
+
+                    
                 
                 # Combine blocks based on whether erasure coding is used
-                if self.erasure_code is not None:
-                    # Use erasure coding to extract data
-                    data = self.erasure_code.extract_data(blocks, int(chunk_download.size)) # type: ignore[arg-type]
+                if self.erasure_code is None:
+                    # No code: simple concat
+                    data: bytes = b"".join(b for b in blocks if b is not None)
                 else:
-                    # Simple concatenation of blocks
-                    data = b"".join([b for b in blocks if b is not None])
+                    # Erasure‐coded path
+                    data: bytes = self.erasure_code.extract_data(blocks, chunk_download.size) # type: ignore[arg-type]
                 
                 # Decrypt the data if an encryption key is provided
                 if file_encryption_key:
@@ -790,22 +773,23 @@ class StreamingAPI:
                         )] = index
                     
                     # Collect results and organize them by position
-                    blocks: List[Optional[bytes]] = [None] * len(chunk_download.blocks)
+                    blocks: List[Optional[bytes]] = [None for _ in range(len(chunk_download.blocks))]
                     for future in concurrent.futures.as_completed(futures):
-                        index = futures[future]
+                        idx = futures[future]
                         try:
                             # Extract data from the block
                             data = future.result()
-                            blocks[index] = extract_block_data(chunk_download.blocks[index].cid, data)
+                            blocks[idx] = extract_block_data(chunk_download.blocks[idx].cid, data)
                         except Exception as e:
                             raise SDKError(f"failed to download block: {str(e)}")
                 
-                if self.erasure_code is not None:
+                if self.erasure_code is None:
+                    # Simple concatenation of blocks
+                    data = b"".join([b for b in blocks if b is not None]) # type: ignore[return-value]
+                else:
                     # Use erasure coding to extract data
                     data = self.erasure_code.extract_data(blocks, int(chunk_download.size)) # type: ignore[arg-type]
-                else:
-                    # Simple concatenation of blocks
-                    data = b"".join([b for b in blocks if b is not None])
+                    
 
                 # Decrypt the data if an encryption key is provided
                 if file_encryption_key:
@@ -822,65 +806,37 @@ class StreamingAPI:
         except Exception as err:
             raise SDKError(f"failed to download random chunk blocks: {str(err)}")
     
-    def _fetch_block_data(self, ctx: Any, pool: ConnectionPool, stream_id: str, chunk_cid: str, chunk_index: int, block_index: int, block: FileBlockDownload) -> bytes:
+    def _fetch_block_data(
+        self,
+        ctx: Any,
+        pool: ConnectionPool,
+        stream_id: str,
+        chunk_cid: str,
+        chunk_index: int,
+        block_index: int,
+        block: FileBlockDownload
+    ) -> bytes | None:
+        if block.filecoin:
+            return self.sp_client.fetch_block(block.filecoin.base_url, block.cid)
+        if not block.akave:
+            raise SDKError("missing block metadata")
+
+        client, closer = pool.create_streaming_client(
+            block.akave.node_address, self.use_connection_pool
+        )
         try:
-            # Check if block metadata is available
-            if block.akave is None and block.filecoin is None:
-                raise SDKError("missing block metadata")
-            
-            # If Filecoin data is available, fetch from Filecoin
-            if block.filecoin is not None:
-                try:
-                    # Decode the CID
-                    cid_obj = cidlib.CID.decode(block.cid)
-                    # Fetch the block from Filecoin
-                    data = self.sp_client.fetch_block(block.filecoin.base_url, str(cid_obj))
-                    # Return the raw data
-                    return data
-                except Exception as e:
-                    raise SDKError(f"failed to fetch block from Filecoin: {str(e)}")
-            
-            if block.akave is None:
-                raise SDKError("missing Akave block metadata")
-            # Otherwise, fetch from Akave
-            client, closer = pool.create_streaming_client(block.akave.node_address, self.use_connection_pool)
-            
-            try:
-                # Create download request
-                download_req = nodeapi_pb2.StreamFileDownloadBlockRequest(
-                    stream_id=stream_id,
-                    chunk_cid=chunk_cid,
-                    chunk_index=chunk_index,
-                    block_cid=block.cid,
-                    block_index=block_index
-                )
-                
-                # Send the request with a timeout of 30 seconds
-                download_client = client.FileDownloadBlock(download_req, timeout=30.0)
-                
-                # Receive the data
-                buffer = io.BytesIO()
-                try:
-                    while True:
-                        # Receive a block using next() for streaming responses
-                        block_data = next(download_client)
-                        if not block_data:
-                            break
-                        # Write the data to the buffer
-                        buffer.write(block_data.data)
-                except StopIteration:
-                    # This is normal - it means we've received all the data
-                    pass
-                except Exception as e:
-                    raise SDKError(f"error receiving block data: {str(e)}")
-                
-                # Return the complete data
-                return buffer.getvalue()
-                
-            finally:
-                # Close the client connection if not using the pool
-                if closer:
-                    closer()
-                    
-        except Exception as e:
-            raise SDKError(f"failed to fetch block data: {str(e)}")
+            req = nodeapi_pb2.StreamFileDownloadBlockRequest(
+                stream_id=stream_id,
+                chunk_cid=chunk_cid,
+                chunk_index=chunk_index,
+                block_cid=block.cid,
+                block_index=block_index
+            )
+            stream = client.FileDownloadBlock(req, timeout=30.0)
+            buffer = io.BytesIO()
+            for msg in stream:
+                buffer.write(msg.data)
+            return buffer.getvalue()
+        finally:
+            if closer:
+                closer()
