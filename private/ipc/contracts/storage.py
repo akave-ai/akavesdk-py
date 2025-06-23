@@ -4,6 +4,14 @@ from web3 import Web3
 from web3.types import TxParams, TxReceipt
 from web3.contract import Contract # type: ignore[import-untyped]
 from eth_account import Account
+
+def get_raw_transaction(signed_tx):
+    if hasattr(signed_tx, 'raw_transaction'):
+        return signed_tx.raw_transaction  # web3 v7+
+    elif hasattr(signed_tx, 'rawTransaction'):
+        return signed_tx.rawTransaction   # web3 v6
+    else:
+        raise AttributeError("SignedTransaction has neither raw_transaction nor rawTransaction attribute")
 import json
 
 class StorageContract:
@@ -28,7 +36,7 @@ class StorageContract:
                 "inputs": [
                     {
                         "internalType": "address",
-                        "name": "_accessManager",
+                        "name": "tokenAddress",
                         "type": "address"
                     }
                 ],
@@ -37,10 +45,236 @@ class StorageContract:
             },
             {
                 "inputs": [],
+                "name": "BlockAlreadyExists",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BlockAlreadyFilled",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BlockInvalid",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BlockNonexists",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BucketAlreadyExists",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BucketInvalid",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BucketInvalidOwner",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BucketNonempty",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "BucketNonexists",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "bytes",
+                        "name": "fileCID",
+                        "type": "bytes"
+                    }
+                ],
+                "name": "ChunkCIDMismatch",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "ECDSAInvalidSignature",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "length",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "ECDSAInvalidSignatureLength",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "s",
+                        "type": "bytes32"
+                    }
+                ],
+                "name": "ECDSAInvalidSignatureS",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileAlreadyExists",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileChunkDuplicate",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileFullyUploaded",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileInvalid",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileNameDuplicate",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileNonempty",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileNotExists",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "FileNotFilled",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "IndexMismatch",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "cidsLength",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "sizesLength",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "InvalidArrayLength",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidBlockIndex",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidBlocksAmount",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidEncodedSize",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidFileBlocksCount",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidFileCID",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidLastBlockSize",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "InvalidShortString",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "LastChunkDuplicate",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "string",
+                        "name": "str",
+                        "type": "string"
+                    }
+                ],
+                "name": "StringTooLong",
+                "type": "error"
+            },
+            {
+                "anonymous": False,
+                "inputs": [
+                    {
+                        "indexed": True,
+                        "internalType": "bytes32",
+                        "name": "id",
+                        "type": "bytes32"
+                    },
+                    {
+                        "indexed": True,
+                        "internalType": "bytes32",
+                        "name": "bucketId",
+                        "type": "bytes32"
+                    },
+                    {
+                        "indexed": True,
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "indexed": False,
+                        "internalType": "address",
+                        "name": "owner",
+                        "type": "address"
+                    }
+                ],
+                "name": "AddFile",
+                "type": "event"
+            },
+            {
+                "inputs": [],
                 "name": "accessManager",
                 "outputs": [
                     {
-                        "internalType": "address",
+                        "internalType": "contract IAccessManager",
                         "name": "",
                         "type": "address"
                     }
@@ -52,40 +286,81 @@ class StorageContract:
                 "inputs": [
                     {
                         "internalType": "string",
-                        "name": "bucketName",
+                        "name": "name",
                         "type": "string"
                     }
                 ],
                 "name": "createBucket",
-                "outputs": [],
+                "outputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "id",
+                        "type": "bytes32"
+                    }
+                ],
                 "stateMutability": "nonpayable",
                 "type": "function"
             },
             {
                 "inputs": [
                     {
-                        "internalType": "string",
-                        "name": "bucketName",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "string",
-                        "name": "fileName",
-                        "type": "string"
-                    },
-                    {
                         "internalType": "bytes32",
-                        "name": "fileId",
+                        "name": "bucketId",
                         "type": "bytes32"
                     },
                     {
-                        "internalType": "uint256",
-                        "name": "size",
-                        "type": "uint256"
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
                     }
                 ],
                 "name": "createFile",
-                "outputs": [],
+                "outputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "",
+                        "type": "bytes32"
+                    }
+                ],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "bucketId",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "encodedFileSize",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "actualSize",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bytes",
+                        "name": "fileCID",
+                        "type": "bytes"
+                    }
+                ],
+                "name": "commitFile",
+                "outputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "",
+                        "type": "bytes32"
+                    }
+                ],
                 "stateMutability": "nonpayable",
                 "type": "function"
             },
@@ -121,18 +396,34 @@ class StorageContract:
             {
                 "inputs": [
                     {
-                        "internalType": "string",
-                        "name": "bucketName",
-                        "type": "string"
+                        "internalType": "bytes32",
+                        "name": "fileID",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "bytes32",
+                        "name": "bucketId",
+                        "type": "bytes32"
                     },
                     {
                         "internalType": "string",
-                        "name": "fileName",
+                        "name": "name",
                         "type": "string"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "index",
+                        "type": "uint256"
                     }
                 ],
                 "name": "deleteFile",
-                "outputs": [],
+                "outputs": [
+                    {
+                        "internalType": "bool",
+                        "name": "",
+                        "type": "bool"
+                    }
+                ],
                 "stateMutability": "nonpayable",
                 "type": "function"
             },
@@ -140,14 +431,19 @@ class StorageContract:
                 "inputs": [
                     {
                         "internalType": "string",
-                        "name": "bucketName",
+                        "name": "name",
                         "type": "string"
                     }
                 ],
-                "name": "getBucket",
+                "name": "getBucketByName",
                 "outputs": [
                     {
                         "components": [
+                            {
+                                "internalType": "bytes32",
+                                "name": "id",
+                                "type": "bytes32"
+                            },
                             {
                                 "internalType": "string",
                                 "name": "name",
@@ -162,56 +458,15 @@ class StorageContract:
                                 "internalType": "address",
                                 "name": "owner",
                                 "type": "address"
+                            },
+                            {
+                                "internalType": "bytes32[]",
+                                "name": "files",
+                                "type": "bytes32[]"
                             }
                         ],
-                        "internalType": "struct Storage.Bucket",
-                        "name": "",
-                        "type": "tuple"
-                    }
-                ],
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "inputs": [
-                    {
-                        "internalType": "string",
-                        "name": "bucketName",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "string",
-                        "name": "fileName",
-                        "type": "string"
-                    }
-                ],
-                "name": "getFile",
-                "outputs": [
-                    {
-                        "components": [
-                            {
-                                "internalType": "string",
-                                "name": "name",
-                                "type": "string"
-                            },
-                            {
-                                "internalType": "bytes32",
-                                "name": "id",
-                                "type": "bytes32"
-                            },
-                            {
-                                "internalType": "uint256",
-                                "name": "size",
-                                "type": "uint256"
-                            },
-                            {
-                                "internalType": "uint256",
-                                "name": "createdAt",
-                                "type": "uint256"
-                            }
-                        ],
-                        "internalType": "struct Storage.File",
-                        "name": "",
+                        "internalType": "struct IStorage.Bucket",
+                        "name": "bucket",
                         "type": "tuple"
                     }
                 ],
@@ -241,10 +496,112 @@ class StorageContract:
                 ],
                 "stateMutability": "view",
                 "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "bucketId",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    }
+                ],
+                "name": "getFileByName",
+                "outputs": [
+                    {
+                        "components": [
+                            {
+                                "internalType": "bytes32",
+                                "name": "id",
+                                "type": "bytes32"
+                            },
+                            {
+                                "internalType": "bytes",
+                                "name": "fileCID",
+                                "type": "bytes"
+                            },
+                            {
+                                "internalType": "bytes32",
+                                "name": "bucketId",
+                                "type": "bytes32"
+                            },
+                            {
+                                "internalType": "string",
+                                "name": "name",
+                                "type": "string"
+                            },
+                            {
+                                "internalType": "uint256",
+                                "name": "encodedSize",
+                                "type": "uint256"
+                            },
+                            {
+                                "internalType": "uint256",
+                                "name": "createdAt",
+                                "type": "uint256"
+                            },
+                            {
+                                "internalType": "uint256",
+                                "name": "actualSize",
+                                "type": "uint256"
+                            },
+                            {
+                                "components": [
+                                    {
+                                        "internalType": "bytes[]",
+                                        "name": "chunkCIDs",
+                                        "type": "bytes[]"
+                                    },
+                                    {
+                                        "internalType": "uint256[]",
+                                        "name": "chunkSize",
+                                        "type": "uint256[]"
+                                    }
+                                ],
+                                "internalType": "struct IStorage.Chunk",
+                                "name": "chunks",
+                                "type": "tuple"
+                            }
+                        ],
+                        "internalType": "struct IStorage.File",
+                        "name": "file",
+                        "type": "tuple"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "bytes32",
+                        "name": "fileId",
+                        "type": "bytes32"
+                    }
+                ],
+                "name": "getFileIndexById",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "index",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
             }
         ]
         
-        self.contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
+        self.contract = web3.eth.contract(address=contract_address, abi=self.abi)
 
     def get_access_manager(self) -> HexAddress:
         """Gets the address of the associated access manager contract.
@@ -286,7 +643,7 @@ class StorageContract:
         signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
         
         # Send raw transaction
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
         
         # Wait for receipt
         receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
@@ -303,20 +660,23 @@ class StorageContract:
         return cast(HexStr, tx_hash.hex())
 
     def create_file(self, bucket_name: str, file_name: str, file_id: bytes, size: int, from_address: HexAddress, private_key: str) -> None:
-        """Creates a new file entry.
+        """Creates a new file entry using the new ABI signature.
         
         Args:
             bucket_name: Name of the bucket containing the file
             file_name: Name of the file
-            file_id: Unique ID of the file
-            size: Size of the file in bytes
+            file_id: Unique ID of the file (not used in new ABI)
+            size: Size of the file in bytes (not used in new ABI)
             from_address: Address creating the file
             private_key: Private key for signing the transaction
         """
-        # Build transaction
-        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
-        tx = self.contract.functions.createFile(bucket_name, file_name, file_id, size).build_transaction({
-            'from': checksum_from_address,
+        # First get bucket to get bucket ID
+        bucket = self.contract.functions.getBucketByName(bucket_name).call()
+        bucket_id = bucket[0]  # bytes32 id
+        
+        # Build transaction with new signature: createFile(bucketId, name)
+        tx = self.contract.functions.createFile(bucket_id, file_name).build_transaction({
+            'from': from_address,
             'gas': 500000,  # Gas limit
             'gasPrice': self.web3.eth.gas_price,
             'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
@@ -326,7 +686,7 @@ class StorageContract:
         signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
         
         # Send raw transaction
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
         
         # Wait for receipt
         receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
@@ -334,7 +694,7 @@ class StorageContract:
             raise Exception("Transaction failed")
 
     def commit_file(self, bucket_name: str, file_name: str, size: int, root_cid: bytes, from_address: HexAddress, private_key: str) -> None:
-        """Updates the file metadata after upload (size, root CID).
+        """Updates the file metadata after upload using new ABI signature.
         
         Args:
             bucket_name: Name of the bucket containing the file
@@ -344,20 +704,14 @@ class StorageContract:
             from_address: Address committing the file
             private_key: Private key for signing the transaction
         """
-        # Assume a contract function like 'commitFile' or 'updateFileMetadata' exists
-        # Adding 'commitFile' based on Go SDK patterns
-        function_name = 'commitFile' # Adjust if contract ABI uses a different name
+        # First get bucket to get bucket ID
+        bucket = self.contract.functions.getBucketByName(bucket_name).call()
+        bucket_id = bucket[0]  # bytes32 id
         
-        
-        try:
-            contract_function = getattr(self.contract.functions, function_name)
-        except AttributeError:
-            raise NotImplementedError(f"Contract function '{function_name}' not found in ABI")
-            
-        # Build transaction
-        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
-        tx = contract_function(bucket_name, file_name, size, root_cid).build_transaction({
-            'from': checksum_from_address,
+        # commitFile signature: commitFile(bucketId, name, encodedFileSize, actualSize, fileCID)
+        # We'll use size for both encodedFileSize and actualSize
+        tx = self.contract.functions.commitFile(bucket_id, file_name, size, size, root_cid).build_transaction({
+            'from': from_address,
             'gas': 500000,  # Gas limit (adjust as needed)
             'gasPrice': self.web3.eth.gas_price,
             'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
@@ -367,37 +721,21 @@ class StorageContract:
         signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
 
         # Send raw transaction
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
         
         # Wait for receipt
-        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt['status'] != 1:
-            raise Exception(f"Transaction failed for {function_name}")
+        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt.status != 1:
+            raise Exception("Transaction failed for commitFile")
 
-    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: Optional[str] = None) -> HexStr:
-        """Deletes a bucket.
-        
-        Args:
-            bucket_name: Name of the bucket to delete
-            from_address: Address deleting the bucket
-            private_key: Private key for signing the transaction
-            bucket_id_hex: Hex string bucket ID from IPC BucketView response (e.g., "a1b2c3d4...")
-            
-        Returns:
-            Transaction hash of the delete operation
-            
-        Raises:
-            Exception: If the transaction fails or is reverted
-        """
+    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: str = None) -> HexStr:
         if not bucket_id_hex:
             raise Exception("bucket_id_hex is required - get it from IPC BucketView response")
             
         try:
-            # Convert hex string to bytes32 like Go SDK does: hex.DecodeString(bucket.Id)
             if bucket_id_hex.startswith('0x'):
                 bucket_id_hex = bucket_id_hex[2:]
             
-            # Ensure we have exactly 32 bytes (64 hex chars)
             if len(bucket_id_hex) != 64:
                 bucket_id_hex = bucket_id_hex.ljust(64, '0')  # Pad with zeros if needed
                 
@@ -479,7 +817,7 @@ class StorageContract:
             signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
             
             # Send transaction
-            tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
             print(f"Transaction sent: {tx_hash.hex()}")
             
             # Wait for receipt
@@ -494,56 +832,50 @@ class StorageContract:
         except Exception as e:
             raise Exception(f"Failed to delete bucket: {str(e)}")
 
-    def delete_file(self, bucket_name: str, file_name: str, from_address: HexAddress, private_key: str) -> None:
-        """Deletes a file.
+    def delete_file(self, auth, file_id: bytes, bucket_id: bytes, file_name: str, file_index: int) -> str:
         
-        Args:
-            bucket_name: Name of the bucket containing the file
-            file_name: Name of the file to delete
-            from_address: Address deleting the file
-            private_key: Private key for signing the transaction
-        """
         # Build transaction
-        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
-        tx = self.contract.functions.deleteFile(bucket_name, file_name).build_transaction({
-            'from': checksum_from_address,
+        tx = self.contract.functions.deleteFile(file_id, bucket_id, file_name, file_index).build_transaction({
+            'from': auth.address,
             'gas': 500000,  # Gas limit
             'gasPrice': self.web3.eth.gas_price,
-            'nonce': self.web3.eth.get_transaction_count(checksum_from_address)
+            'nonce': self.web3.eth.get_transaction_count(auth.address)
         })
+        signed_tx = Account.sign_transaction(tx, auth.key)
         
-        # Sign transaction
-        signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
-
-        # Send raw transaction
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
         
-        # Wait for receipt
-        receipt: TxReceipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt['status'] != 1:
+        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt.status != 1:
             raise Exception("Transaction failed")
+            
+        return tx_hash.hex()
 
     def get_bucket(self, bucket_name: str) -> Tuple[str, int, HexAddress]:
-        """Gets bucket information.
-        
-        Args:
-            bucket_name: Name of the bucket
-            
-        Returns:
-            Tuple containing (bucket_name, created_at_timestamp, owner_address)
-        """
-        result = self.contract.functions.getBucket(bucket_name).call()
-        return cast(Tuple[str, int, HexAddress], result)
+        bucket = self.contract.functions.getBucketByName(bucket_name).call()
+        return (bucket[1], bucket[2], bucket[3])  # (name, createdAt, owner)
 
     def get_file(self, bucket_name: str, file_name: str) -> Tuple[str, bytes, int, int]:
-        """Gets file information.
         
-        Args:
-            bucket_name: Name of the bucket containing the file
-            file_name: Name of the file
-            
-        Returns:
-            Tuple containing (file_name, file_id, size, created_at_timestamp)
-        """
-        result = self.contract.functions.getFile(bucket_name, file_name).call()
-        return cast(Tuple[str, bytes, int, int], result)
+        bucket = self.contract.functions.getBucketByName(bucket_name).call()
+        bucket_id = bucket[0]  # bytes32 id
+        file_info = self.contract.functions.getFileByName(bucket_id, file_name).call()
+        return (file_info[3], file_info[0], file_info[4], file_info[5])  # (name, id, encodedSize, createdAt)
+
+    def get_bucket_by_name(self, call_opts: dict, bucket_name: str):
+        if call_opts:
+            return self.contract.functions.getBucketByName(bucket_name).call(call_opts)
+        else:
+            return self.contract.functions.getBucketByName(bucket_name).call()
+
+    def get_file_by_name(self, call_opts: dict, bucket_id: bytes, file_name: str):
+        if call_opts:
+            return self.contract.functions.getFileByName(bucket_id, file_name).call(call_opts)
+        else:
+            return self.contract.functions.getFileByName(bucket_id, file_name).call()
+
+    def get_file_index_by_id(self, call_opts: dict, file_name: str, bucket_id: bytes):
+        if call_opts:
+            return self.contract.functions.getFileIndexById(file_name, bucket_id).call(call_opts)
+        else:
+            return self.contract.functions.getFileIndexById(file_name, bucket_id).call()

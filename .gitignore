@@ -13,6 +13,7 @@ ENV/
 env.bak/
 venv.bak/
 NOTES
+tests/.env
 
 
 # Distribution / packaging

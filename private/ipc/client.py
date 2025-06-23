@@ -1,7 +1,7 @@
 import time
 from typing import Optional
 from web3 import Web3
-from web3.middleware import geth_poa_middleware # type: ignore[import-untyped]
+from web3.middleware import ExtraDataToPOAMiddleware
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from .contracts import StorageContract, AccessManagerContract
@@ -83,7 +83,7 @@ class Client:
 
         # Add POA middleware if needed (common for testnets like Goerli, Sepolia)
         # Consider making this optional based on chain type
-        web3.middleware_onion.inject(geth_poa_middleware, layer=0) 
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0) 
 
         # Create account from private key
         try:
@@ -129,7 +129,7 @@ class Client:
             raise ConnectionError(f"Failed to connect to Ethereum node at {config.dial_uri}")
         
         # Add POA middleware
-        web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
         try:
             account: LocalAccount = cast(

@@ -1,5 +1,6 @@
 import os
 import hashlib
+from typing import Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -20,7 +21,7 @@ def derive_key(key: bytes, info: bytes) -> bytes:
     return hkdf.derive(key)
 
 
-def make_gcm_cipher(origin_key: bytes, info: bytes) -> Tuple[Cipher, bytes]:
+def make_gcm_cipher(origin_key: bytes, info: bytes) -> Tuple[Cipher, bytes]
     """
     Creates a GCM cipher using the provided key and info.
     The key is derived using HKDF with SHA-256, and a random nonce is generated.
@@ -44,19 +45,18 @@ def encrypt(key: bytes, data: bytes, info: bytes) -> bytes:
     encrypted_data = nonce + ciphertext + tag
     return cast(bytes, encrypted_data)
 
-
 def decrypt(key: bytes, encrypted_data: bytes, info: bytes) -> bytes:
-    nonce_size = 12  # AES-GCM standard nonce size
-    tag_size = 16  # AES-GCM standard tag size
+    nonce_size = 12  
+    tag_size = 16 
     if len(encrypted_data) < nonce_size + tag_size:
-        raise ValueError("Invalid encrypted data")
+        raise ValueError("Invalid encrypted data: insufficient length")
     
     nonce = encrypted_data[:nonce_size]
     ciphertext = encrypted_data[nonce_size:-tag_size]
     tag = encrypted_data[-tag_size:]
     
-    key = derive_key(key, info)
-    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
+    derived_key = derive_key(key, info)
+    cipher = Cipher(algorithms.AES(derived_key), modes.GCM(nonce, tag), backend=default_backend())
     decryptor = cipher.decryptor()
     decrypted_data = decryptor.update(ciphertext) + decryptor.finalize()
     return cast(bytes, decrypted_data)
