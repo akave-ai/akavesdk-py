@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional, cast
+from typing import List, Tuple, Optional, cast, Dict
 from eth_typing import HexAddress, HexStr, ChecksumAddress
 from web3 import Web3
 from web3.types import TxParams, TxReceipt
@@ -31,7 +31,7 @@ class StorageContract:
         self.checksum_address: ChecksumAddress = self.web3.to_checksum_address(self.contract_address)
         
         # Contract ABI from the Go bindings
-        self.abi = [
+        self.abi: List[Dict] = [
             {
                 "inputs": [
                     {
@@ -601,7 +601,7 @@ class StorageContract:
             }
         ]
         
-        self.contract = web3.eth.contract(address=contract_address, abi=self.abi)
+        self.contract = web3.eth.contract(address=self.checksum_address, abi=self.abi)
 
     def get_access_manager(self) -> HexAddress:
         """Gets the address of the associated access manager contract.
@@ -675,6 +675,7 @@ class StorageContract:
         bucket_id = bucket[0]  # bytes32 id
         
         # Build transaction with new signature: createFile(bucketId, name)
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
         tx = self.contract.functions.createFile(bucket_id, file_name).build_transaction({
             'from': from_address,
             'gas': 500000,  # Gas limit
@@ -710,6 +711,7 @@ class StorageContract:
         
         # commitFile signature: commitFile(bucketId, name, encodedFileSize, actualSize, fileCID)
         # We'll use size for both encodedFileSize and actualSize
+        checksum_from_address: ChecksumAddress = self.web3.to_checksum_address(from_address)
         tx = self.contract.functions.commitFile(bucket_id, file_name, size, size, root_cid).build_transaction({
             'from': from_address,
             'gas': 500000,  # Gas limit (adjust as needed)
@@ -725,10 +727,10 @@ class StorageContract:
         
         # Wait for receipt
         receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        if receipt['status'] != 1:
             raise Exception("Transaction failed for commitFile")
 
-    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: str = None) -> HexStr:
+    def delete_bucket(self, bucket_name: str, from_address: HexAddress, private_key: str, bucket_id_hex: Optional[str] = None) -> HexStr:
         if not bucket_id_hex:
             raise Exception("bucket_id_hex is required - get it from IPC BucketView response")
             
@@ -841,12 +843,12 @@ class StorageContract:
             'gasPrice': self.web3.eth.gas_price,
             'nonce': self.web3.eth.get_transaction_count(auth.address)
         })
-        signed_tx = Account.sign_transaction(tx, auth.key)
+        signed_tx = self.web3.eth.account.sign_transaction(tx, auth.key)
         
         tx_hash = self.web3.eth.send_raw_transaction(get_raw_transaction(signed_tx))
         
         receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt.status != 1:
+        if receipt['status'] != 1:
             raise Exception("Transaction failed")
             
         return tx_hash.hex()
