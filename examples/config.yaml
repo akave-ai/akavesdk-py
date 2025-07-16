@@ -1,0 +1,5 @@
+private_key: your_private_key_here
+akave_sdk_node: connect.akave.ai:5000
+akave_ipc_node: connect.akave.ai:5500
+ethereum_node_url: https://n3-us.akave.ai/ext/bc/2JMWNmZbYvWcJRPPy1siaDBZaDGTDAaqXoY5UBKh4YrhNFzEce/rpc
+storage_contract_address: 0x9Aa8ff1604280d66577ecB5051a3833a983Ca3aF

@@ -2,7 +2,7 @@ import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
 import logging
 from private.pb import nodeapi_pb2, nodeapi_pb2_grpc, ipcnodeapi_pb2, ipcnodeapi_pb2_grpc
-from private.ipc.client import Client, Config
+from private.ipc.client import Client, Config as IPCConfig
 from private.spclient.spclient import SPClient
 from private.encryption import derive_key
 from typing import List, Optional
@@ -13,6 +13,8 @@ from .erasure_code import ErasureCode
 from .common import SDKError, BLOCK_SIZE, MIN_BUCKET_NAME_LENGTH
 import os
 import time
+
+from .config import config
 
 try:
     from ipld_dag_pb import decode as decode_dag_pb
@@ -75,6 +77,10 @@ class SDK:
                  encryption_key: Optional[bytes] = None, private_key: Optional[str] = None,
                  streaming_max_blocks_in_chunk: int = 32, parity_blocks_count: int = 0,
                  ipc_address: Optional[str] = None):
+        
+        if not address:
+            address = config.akave_sdk_node
+        
         self.client = None
         self.conn = None
         self.ipc_conn = None
@@ -84,11 +90,11 @@ class SDK:
         self.max_concurrency = max_concurrency
         self.block_part_size = block_part_size
         self.use_connection_pool = use_connection_pool
-        self.private_key = private_key
+        self.private_key = private_key or config.private_key
         self.encryption_key = encryption_key or []
         self.streaming_max_blocks_in_chunk = streaming_max_blocks_in_chunk
         self.parity_blocks_count = parity_blocks_count
-        self.ipc_address = ipc_address or address  # Use provided IPC address or fallback to main address
+        self.ipc_address = ipc_address or config.akave_ipc_node or address  # Use provided IPC address or fallback to main address
         
         self._contract_info = None
 
@@ -186,7 +192,7 @@ class SDK:
             if not self.private_key:
                 raise SDKError("Private key is required for IPC operations")
             
-            config = Config(
+            config = IPCConfig(
                 dial_uri=conn_params['dial_uri'],
                 private_key=self.private_key,
                 storage_contract_address=conn_params['contract_address'],
