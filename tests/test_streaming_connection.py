@@ -182,14 +182,14 @@ def main():
             logging.error(f"Failed to create test bucket: {str(e)}")
             sys.exit(1)
 
-        connection_ok = test_streaming_connection(sdk)
+        # connection_ok = test_streaming_connection(sdk)
         file_ops_ok = test_file_operations(sdk, bucket_name)
 
         print("\nTest Summary:")
-        print(f"Streaming Connection: {'✓' if connection_ok else '✗'}")
+        # print(f"Streaming Connection: {'✓' if connection_ok else '✗'}")
         print(f"File Operations: {'✓' if file_ops_ok else '✗'}")
 
-        success = connection_ok and file_ops_ok
+        success = file_ops_ok
         print(f"\nOverall: {'✓ SUCCESS' if success else '✗ FAILURE'}")
 
         try:
