@@ -219,9 +219,8 @@ class StreamingAPI:
             chunk_enc_overhead = 0
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
-                chunk_enc_overhead = EncryptionOverhead
+                file_enc_key = encryption_key(self.encryption_key, upload.bucket_name, upload.name)
+                chunk_enc_overhead = EncryptionOverhead  
             
             is_empty_file = True
             
@@ -252,8 +251,8 @@ class StreamingAPI:
                 chunk_upload = self._create_chunk_upload(ctx, upload, chunk_index, file_enc_key, buf[:n])
                 
                 # Add link to DAG root
-                self._add_dag_link(dag_root, chunk_upload.ChunkCID, chunk_upload.RawDataSize, chunk_upload.ProtoNodeSize)
-                
+                self._add_dag_link(dag_root, chunk_upload.chunk_cid, chunk_upload.raw_data_size, chunk_upload.proto_node_size)
+
                 # Upload chunk
                 self._upload_chunk(ctx, chunk_upload)
                 
@@ -311,8 +310,7 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
             
             for chunk in file_download.chunks:
                 # Check for context cancellation
@@ -321,7 +319,7 @@ class StreamingAPI:
                 
                 # Create chunk download
                 chunk_download = self._create_chunk_download(ctx, file_download.stream_id, chunk)
-
+                print(chunk_download)
                 # Download chunk blocks
                 self._download_chunk_blocks(ctx, file_download.stream_id, chunk_download, file_enc_key, writer)
 
@@ -333,9 +331,8 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
-            
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
+
             for chunk in file_download.chunks:
                 # Check for context cancellation
                 if hasattr(ctx, 'done') and ctx.done():
@@ -358,9 +355,8 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
-            
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
+
             for chunk in file_download.chunks:
                 # Check for context cancellation
                 if hasattr(ctx, 'done') and ctx.done():
@@ -462,7 +458,6 @@ class StreamingAPI:
                 size,
                 block_uploads
             )
-            
             # Create the chunk upload request
             request = nodeapi_pb2.StreamFileUploadChunkCreateRequest()
             request.chunk.CopyFrom(proto_chunk)
@@ -599,7 +594,6 @@ class StreamingAPI:
             raise SDKError(f"failed to upload block {block.cid}: {str(err)}")
 
     def _commit_stream(self, ctx: Any, upload: FileUpload, root_cid: str, chunk_count: int) -> FileMeta:
-        # TODO: Implement stream commit
         request = nodeapi_pb2.StreamFileUploadCommitRequest(
             stream_id=upload.stream_id,
             root_cid=root_cid,
@@ -636,16 +630,17 @@ class StreamingAPI:
         res = self.client.FileDownloadChunkCreate(request)
         
         blocks = []
+        print(res.blocks)
         for block in res.blocks:
             blocks.append(FileBlockDownload(
                 cid=block.cid,
                 akave=AkaveBlockData(
                     node_id=block.node_id,
                     node_address=block.node_address,
-                    permit=block.permit
+                    permit=getattr(block, "permit", "") if getattr(block, "permit", None) is not None else ""
                 ),
                 filecoin=FilecoinBlockData(
-                    base_url=block.filecoin.sp_address
+                    base_url=getattr(block.filecoin, "sp_address", "") if hasattr(block, "filecoin") else "https://"
                 ),
                 data=block.data if hasattr(block, 'data') and block.data is not None else b''
             ))
