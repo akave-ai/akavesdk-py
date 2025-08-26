@@ -56,7 +56,7 @@ class DAGRoot:
     def new(cls):
         return cls()
     
-    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int) -> None:
+    def add_link(self, chunk_cid, raw_data_size: int, encoded_size: int) -> None:
         if hasattr(chunk_cid, 'string'):
             cid_str = chunk_cid.string()
         elif hasattr(chunk_cid, '__str__'):
@@ -76,7 +76,7 @@ class DAGRoot:
             "cid": cid_obj,      # Store CID object for PBLink
             "cid_str": cid_str,  # Store string for other uses
             "name": "",  
-            "size": proto_node_size
+            "size": encoded_size
         })
         
         self.total_file_size += raw_data_size
@@ -147,7 +147,7 @@ class DAGRoot:
 class ChunkDAG:   
     cid: Any                           # Chunk CID (CID object or string)
     raw_data_size: int                 # Size of original data
-    proto_node_size: int               # Size of encoded DAG-PB node
+    encoded_size: int               # Size of encoded DAG-PB node
     blocks: List[FileBlockUpload]      # Blocks in the chunk
 
 def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[bytes] = None) -> ChunkDAG:
@@ -162,7 +162,7 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
         
         if len(data) <= block_size:
             chunk_cid, encoded_data = _create_unixfs_file_node(data)
-            proto_node_size = len(encoded_data)
+            encoded_size = len(encoded_data)
             
             blocks = [FileBlockUpload(
                 cid=str(chunk_cid) if hasattr(chunk_cid, '__str__') else chunk_cid,
@@ -183,13 +183,13 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
                 blocks.append(block)
                 
                 offset = end_offset
-                chunk_cid, proto_node_size = _create_chunk_dag_node(blocks)
+                chunk_cid, encoded_size = _create_chunk_dag_node(blocks)
         if not blocks:
             raise DAGError("no blocks created")
         return ChunkDAG(
             cid=chunk_cid,
             raw_data_size=raw_data_size,
-            proto_node_size=proto_node_size,
+            encoded_size=encoded_size,
             blocks=blocks
         )    
     except Exception as e:
@@ -407,9 +407,9 @@ def node_sizes(node_data: bytes) -> Tuple[int, int]:
     
     try:
         # For our implementation, proto size is the encoded size
-        proto_node_size = len(node_data)
-        raw_data_size = proto_node_size
-        return raw_data_size, proto_node_size
+        encoded_size = len(node_data)
+        raw_data_size = encoded_size
+        return raw_data_size, encoded_size
         
     except Exception as e:
         raise DAGError(f"failed to calculate node sizes: {str(e)}")
