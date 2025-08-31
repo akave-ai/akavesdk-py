@@ -120,7 +120,7 @@ class FileChunkUpload:
     chunk_cid: Any  # Now using proper CID type
     actual_size: int
     raw_data_size: int
-    proto_node_size: int
+    encoded_size: int
     blocks: List[FileBlockUpload]
 
 
@@ -217,7 +217,7 @@ class IPCFileChunkUploadV2:
     chunk_cid: CIDType  # Now using proper CID type
     actual_size: int
     raw_data_size: int
-    proto_node_size: int
+    encoded_size: int
     blocks: List[FileBlockUpload]
     bucket_id: bytes  # 32-byte array in Go, using bytes in Python
     file_name: str

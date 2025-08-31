@@ -70,11 +70,11 @@ class DAGRoot:
         """Create a new DAG root instance."""
         return cls()
     
-    def add_link(self, chunk_cid: Any, raw_data_size: int, proto_node_size: int) -> None:
+    def add_link(self, chunk_cid: Any, raw_data_size: int, encoded_size: int) -> None:
         self.links.append({
             "cid": chunk_cid,
             "raw_data_size": raw_data_size,
-            "proto_node_size": proto_node_size
+            "encoded_size": encoded_size
         })
         return None
     
@@ -417,9 +417,9 @@ class StreamingAPI:
         """Create a new DAG root"""
         return DAGRoot.new()
     
-    def _add_dag_link(self, dag_root: DAGRoot, chunk_cid: Any, raw_size: int, proto_node_size: int) -> None:
+    def _add_dag_link(self, dag_root: DAGRoot, chunk_cid: Any, raw_size: int, encoded_size: int) -> None:
         """Add a link to the DAG root"""
-        return dag_root.add_link(chunk_cid, raw_size, proto_node_size)
+        return dag_root.add_link(chunk_cid, raw_size, encoded_size)
     
     def _build_dag_root(self, dag_root: DAGRoot) -> str:
         """Build the DAG root and return its CID"""
@@ -499,7 +499,7 @@ class StreamingAPI:
                 chunk_cid=chunk_dag.cid,
                 actual_size=size,
                 raw_data_size=chunk_dag.raw_data_size,
-                proto_node_size=chunk_dag.proto_node_size,
+                encoded_size=chunk_dag.proto_node_size,
                 blocks=blocks
             )
         except Exception as err:

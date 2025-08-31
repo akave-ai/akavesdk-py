@@ -56,7 +56,7 @@ class DAGRoot:
     def new(cls):
         return cls()
     
-    def add_link(self, chunk_cid, raw_data_size: int, encoded_size: int) -> None:
+    def add_link(self, chunk_cid, raw_data_size: int, proto_node_size: int) -> None:
         if hasattr(chunk_cid, 'string'):
             cid_str = chunk_cid.string()
         elif hasattr(chunk_cid, '__str__'):
@@ -76,7 +76,7 @@ class DAGRoot:
             "cid": cid_obj,      # Store CID object for PBLink
             "cid_str": cid_str,  # Store string for other uses
             "name": "",  
-            "size": encoded_size
+            "size": proto_node_size
         })
         
         self.total_file_size += raw_data_size

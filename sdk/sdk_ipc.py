@@ -572,7 +572,7 @@ class IPC:
                         break
                     
                     try:
-                        dag_root.add_link(chunk_upload.chunk_cid, chunk_upload.raw_data_size, chunk_upload.proto_node_size)
+                        dag_root.add_link(chunk_upload.chunk_cid, chunk_upload.raw_data_size, chunk_upload.encoded_size)
                     except Exception as e:
                         raise SDKError(f"failed to add DAG link: {str(e)}")
                     
@@ -581,7 +581,7 @@ class IPC:
                     except Exception as e:
                         raise SDKError(f"failed to upload chunk: {str(e)}")
                     
-                    file_size += chunk_upload.proto_node_size
+                    file_size += chunk_upload.encoded_size
                     actual_file_size += chunk_upload.actual_size
                     chunk_count += 1
                     
@@ -777,7 +777,7 @@ class IPC:
                 chunk_cid_bytes,            # cid: bytes (chunk CID) - MUST be bytes (converted from chunk_dag.cid)
                 bucket_id,                  # bucket_id: bytes (bucket ID as bytes32)
                 file_name,                  # name: str (file name)
-                chunk_dag.proto_node_size,  # encoded_chunk_size: int (proto node size)
+                chunk_dag.encoded_size,  # encoded_chunk_size: int (proto node size)
                 cids,                       # cids: list (array of block CIDs as bytes32[])
                 sizes,                      # chunk_blocks_sizes: list (array of block sizes)
                 index,                      # chunk_index: int (chunk index)
@@ -796,7 +796,7 @@ class IPC:
                 chunk_cid=chunk_dag.cid,
                 actual_size=size,
                 raw_data_size=chunk_dag.raw_data_size,
-                proto_node_size=chunk_dag.proto_node_size,
+                encoded_size=chunk_dag.encoded_size,
                 blocks=chunk_dag.blocks,
                 bucket_id=bucket_id,
                 file_name=file_name
