@@ -75,10 +75,10 @@ class DAGError(Exception):
 
 @patch('dataclasses.dataclass')
 class ChunkDAG:
-    def __init__(self, cid, raw_data_size, proto_node_size, blocks):
+    def __init__(self, cid, raw_data_size, encoded_size, blocks):
         self.cid = cid
         self.raw_data_size = raw_data_size
-        self.proto_node_size = proto_node_size
+        self.encoded_size = encoded_size
         self.blocks = blocks
 
 class DAGRoot:
@@ -86,9 +86,9 @@ class DAGRoot:
         self.links = []
         self.data_size = 0
         
-    def add_link(self, cid_str, raw_data_size, proto_node_size):
+    def add_link(self, cid_str, raw_data_size, encoded_size):
         self.data_size += raw_data_size
-        self.links.append(MockPBLink(name="", size=proto_node_size, cid=MockCID.decode(cid_str)))
+        self.links.append(MockPBLink(name="", size=encoded_size, cid=MockCID.decode(cid_str)))
         
     def build(self):
         if not self.links:
@@ -123,7 +123,7 @@ def build_dag(ctx, reader, block_size, enc_key=None):
     return ChunkDAG(
         cid="test-chunk-cid" if num_blocks == 1 else "multi-block-chunk-cid",
         raw_data_size=len(data),
-        proto_node_size=len(data) + 14,  # Some overhead
+        encoded_size=len(data) + 14,  # Some overhead
         blocks=blocks
     )
 

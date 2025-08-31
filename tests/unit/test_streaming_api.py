@@ -178,7 +178,7 @@ class TestStreamingAPI(unittest.TestCase):
         mock_dag = MagicMock()
         mock_dag.cid = "chunk_cid_123"
         mock_dag.raw_data_size = len(data)
-        mock_dag.proto_node_size = 100
+        mock_dag.encoded_size = 100
         mock_dag.blocks = []
         mock_build_dag.return_value = mock_dag
         
