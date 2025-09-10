@@ -407,10 +407,18 @@ def node_sizes(node_data: bytes) -> Tuple[int, int]:
     
     try:
         # For our implementation, proto size is the encoded size
-        encoded_size = len(node_data)
-        raw_data_size = encoded_size
-        return raw_data_size, encoded_size
-        
+        pb_node = decode(node_data)
+        raw_data_size = len(node_data)
+        encoded_size = 0
+        if len(pb_node.links) == 0:
+            proto_node_size = len(pb_node.data)
+            return raw_data_size, proto_node_size
+
+        else: 
+            for link in pb_node.links:
+                encoded_size += link.t_size
+            return raw_data_size, encoded_size
+              
     except Exception as e:
         raise DAGError(f"failed to calculate node sizes: {str(e)}")
 
