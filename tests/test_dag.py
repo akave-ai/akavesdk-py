@@ -5,6 +5,8 @@ import sys
 import random
 from unittest.mock import MagicMock, patch
 
+from sdk.erasure_code import ErasureCode
+
 sys.modules['ipld_dag_pb'] = MagicMock()
 sys.modules['multiformats'] = MagicMock()
 sys.modules['multiformats.multihash'] = MagicMock()
@@ -172,6 +174,33 @@ class TestBuildChunkDag(unittest.TestCase):
         actual = build_dag(ctx, file, 1 * MiB)
         self.assertIsNotNone(actual)
         self.assertEqual(len(actual.blocks), 10)  # 10MiB file with 1MiB chunks = 10 blocks
+
+    def test_chunk_size_without_erasure(self):
+        ctx = MagicMock()
+        file = self.generate_10mib_file()
+        actual = build_dag(ctx, file, 1 * MiB)
+        self.assertIsNotNone(actual)
+        self.assertEqual(actual.encoded_size,10485900)
+        #blocks_total = 0
+        #for block in actual.blocks:
+        # blocks_total += len(block.data)
+        #self.assertEqual(blocks_total,actual.encoded_size)
+
+            
+    def test_chunk_size_with_erasure(self):
+        ctx = MagicMock()
+        file = self.generate_10mib_file()
+        ec = ErasureCode.new(16,16)
+        data = ec.encode(file.read())
+        block_size = len(data) // (ec.data_blocks + ec.parity_blocks)
+        actual = build_dag(ctx, io.BytesIO(data), block_size)
+        self.assertIsNotNone(actual)
+        self.assertEqual(actual.encoded_size,20972000)
+        #blocks_total = 0
+        #for block in actual.blocks:
+        # blocks_total += len(block.data)
+        #self.assertEqual(blocks_total,actual.encoded_size)
+
 
 class TestRootCIDBuilder(unittest.TestCase):
     

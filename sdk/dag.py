@@ -403,11 +403,18 @@ def block_by_cid(blocks: List[FileBlockUpload], cid_str: str) -> tuple[FileBlock
             return block, True
     return FileBlockUpload(cid="", data=b""), False
 
+def bytes_to_node(node_data: bytes):
+    try:
+        pb_node = decode(node_data)
+        return pb_node
+    except Exception as e:
+        raise DAGError(f"failed to decode node data: {str(e)}")
+
 def node_sizes(node_data: bytes) -> Tuple[int, int]:
     
     try:
         # For our implementation, proto size is the encoded size
-        pb_node = decode(node_data)
+        pb_node = bytes_to_node(node_data)
         raw_data_size = len(node_data)
         encoded_size = 0
         if len(pb_node.links) == 0:
