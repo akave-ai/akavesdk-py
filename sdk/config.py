@@ -92,9 +92,9 @@ KNOWN_ERROR_STRINGS: List[str] = [
 @dataclass
 class SDKConfig:
     address: str
-    max_concurrency: int
-    block_part_size: int
-    use_connection_pool: bool
+    max_concurrency: int = 10
+    block_part_size: int = 1024 * 1024
+    use_connection_pool: bool = True
     parity_blocks_count: int = 0
     chunk_buffer: int = 10
     encryption_key: Optional[bytes] = None
