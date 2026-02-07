@@ -70,7 +70,7 @@ class DAGRoot:
         if IPLD_AVAILABLE:
             try:
                 cid_obj = CID.decode(cid_str) if isinstance(cid_str, str) else chunk_cid
-            except:
+            except (ValueError, TypeError, AttributeError):
                 cid_obj = cid_str
         else:
             cid_obj = cid_str
@@ -205,8 +205,8 @@ def build_dag(ctx: Any, reader: BinaryIO, block_size: int, enc_key: Optional[byt
                             name="",
                             size=len(block_encoded_data)
                         ))
-                    except:
-                        pass
+                    except (ValueError, TypeError, AttributeError):
+                        pass  # Skip invalid CIDs when building DAG links
                 
                 offset = end_offset
             
@@ -278,8 +278,8 @@ def _create_chunk_dag_root_node(blocks: List[FileBlockUpload], pb_links: List = 
                         size=len(block.data)
                     )
                     pb_links.append(pb_link)
-                except:
-                    continue
+                except (ValueError, TypeError, AttributeError):
+                    continue  # Skip blocks with invalid CIDs
         
         unixfs_data = bytes([0x08, 0x02]) 
         
@@ -398,7 +398,8 @@ def extract_block_data(cid_str: str, data: bytes) -> bytes:
         try:
             cid_obj = CID.decode(cid_str)
             cid_type = cid_obj.codec
-        except:
+        except (ValueError, TypeError, AttributeError):
+            # Fallback: determine codec type from CID prefix
             if cid_str.startswith('bafkreig'):
                 cid_type = RAW_CODEC
             else:

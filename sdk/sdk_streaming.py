@@ -181,8 +181,8 @@ class StreamingAPI:
             chunk_enc_overhead = 0
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
+                # Derive file-specific encryption key using bucket and file name
+                file_enc_key = encryption_key(self.encryption_key, upload.bucket_name, upload.name)
                 chunk_enc_overhead = EncryptionOverhead
             
             is_empty_file = True
@@ -193,7 +193,7 @@ class StreamingAPI:
             buffer_size -= chunk_enc_overhead
             buf = bytearray(buffer_size)
             
-            # TODO: Implement DAGRoot
+            # Create DAG root for tracking file chunks
             dag_root = self._create_dag_root()
             
             chunk_index = 0
@@ -273,8 +273,8 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
+                # Derive file-specific encryption key using bucket and file name
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
             
             for chunk in file_download.chunks:
                 # Check for context cancellation
@@ -295,8 +295,8 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
+                # Derive file-specific encryption key using bucket and file name
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
             
             for chunk in file_download.chunks:
                 # Check for context cancellation
@@ -320,17 +320,17 @@ class StreamingAPI:
         try:
             file_enc_key = b''
             if self.encryption_key:
-                # TODO: implement key derivation
-                file_enc_key = self.encryption_key
-            
+                # Derive file-specific encryption key using bucket and file name
+                file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
+
             for chunk in file_download.chunks:
                 # Check for context cancellation
                 if hasattr(ctx, 'done') and ctx.done():
                     return
-                
+
                 # Create chunk download
                 chunk_download = self._create_chunk_download(ctx, file_download.stream_id, chunk)
-                
+
                 # Download random chunk blocks
                 self._download_random_chunk_blocks(ctx, file_download.stream_id, chunk_download, file_enc_key, writer)
 
@@ -570,7 +570,7 @@ class StreamingAPI:
             raise SDKError(f"failed to upload block {block.cid}: {str(err)}")
 
     def _commit_stream(self, ctx: Any, upload: FileUpload, root_cid: str, chunk_count: int) -> FileMeta:
-        # TODO: Implement stream commit
+        """Commit the upload stream and finalize the file metadata."""
         request = nodeapi_pb2.StreamFileUploadCommitRequest(
             stream_id=upload.stream_id,
             root_cid=root_cid,
@@ -597,8 +597,9 @@ class StreamingAPI:
             created_at=created_at_dt,
             committed_at=res.committed_at.ToDatetime() if hasattr(res.committed_at, 'ToDatetime') else res.committed_at
         )
+
     def _create_chunk_download(self, ctx: Any, stream_id: str, chunk: Chunk) -> FileChunkDownload:
-        # TODO: Implement chunk download creation
+        """Create a chunk download request and parse the response blocks."""
         request = nodeapi_pb2.StreamFileDownloadChunkCreateRequest(
             stream_id=stream_id,
             chunk_cid=chunk.cid,
@@ -629,21 +630,22 @@ class StreamingAPI:
             blocks=blocks
         )
     
-    def _create_chunk_download_v2(self, ctx, stream_id, chunk):
-        # TODO: Implement chunk download v2 creation
+    def _create_chunk_download_v2(self, ctx: Any, stream_id: str, chunk: Chunk) -> FileChunkDownload:
+        """Create a chunk download request (v2) and parse the response blocks with provider metadata."""
         request = nodeapi_pb2.StreamFileDownloadChunkCreateRequest(
             stream_id=stream_id,
-            chunk_cid=chunk.CID
+            chunk_cid=chunk.cid
         )
-        
+
         res = self.client.FileDownloadChunkCreateV2(request)
-        
+
         blocks = []
         for block in res.blocks:
+            # Handle optional data field - may not be present in all responses
+            block_data = block.data if hasattr(block, 'data') and block.data is not None else b''
             block_download = FileBlockDownload(
                 cid=block.cid,
-                data=block.data if hasattr(block, 'data') and block.data is not None else b'', # TEMP: solution for missing data field
-
+                data=block_data,
             )
             if hasattr(block, 'akave') and block.akave:
                 block_download.akave = AkaveBlockData(
