@@ -66,14 +66,12 @@ jobs:
 
     - name: Check for security vulnerabilities with Safety
       run: |
-        safety check --json || true
-      continue-on-error: true
+        safety check --json
 
     - name: Security check with Bandit
       run: |
-        bandit -r akavesdk/ private/ sdk/ -ll -f json -o bandit-report.json || true
-        bandit -r akavesdk/ private/ sdk/ -ll || true
-      continue-on-error: true
+        bandit -r akavesdk/ private/ sdk/ -ll -f json -o bandit-report.json
+        bandit -r akavesdk/ private/ sdk/ -ll
 
     - name: Upload Bandit report
       uses: actions/upload-artifact@v4
@@ -99,6 +97,5 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pip-audit
-        pip-audit --desc || true
-      continue-on-error: true
+        pip-audit --desc
 
