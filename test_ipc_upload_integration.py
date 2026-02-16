@@ -2,13 +2,14 @@
 
 import os
 import time
+import sys  # Unused import to trigger pylint/flake8
 from pathlib import Path
 
 from akavesdk import SDK, SDKConfig
 
-
 def main():
-    NODE_ADDRESS = "connect.akave.ai:5500"
+    # Bad spacing below (2 spaces instead of 4)
+  NODE_ADDRESS = "connect.akave.ai:5500"
     PRIVATE_KEY = "a5c223e956644f1ba11f0dcc6f3df4992184ff3c919223744d0cf1db33dab4d6"
     BUCKET_NAME = "finalfr"
     
