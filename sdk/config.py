@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from private.memory.memory import Size
+from .erasure_code import ErasureCode
 
 BLOCK_SIZE = 1 * Size.MB
 ENCRYPTION_OVERHEAD = 28  # 16 bytes for AES-GCM tag, 12 bytes for nonce
@@ -27,22 +28,23 @@ EncryptionOverhead = 16  # 16 bytes overhead from encryption
 
 class Config:
     """Configuration for the Ethereum storage contract client."""
-
     def __init__(
         self,
         dial_uri: str,
         private_key: str,
         storage_contract_address: str,
         access_contract_address: Optional[str] = None,
+        policy_factory_contract_address: Optional[str] = None,
     ):
         self.dial_uri = dial_uri
         self.private_key = private_key
         self.storage_contract_address = storage_contract_address
         self.access_contract_address = access_contract_address
+        self.policy_factory_contract_address = policy_factory_contract_address or ""
 
     @staticmethod
     def default():
-        return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="")
+        return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="", policy_factory_contract_address="")
 
 
 ## [SDK Error Class]
@@ -99,9 +101,9 @@ KNOWN_ERROR_STRINGS: List[str] = [
 @dataclass
 class SDKConfig:
     address: str
-    max_concurrency: int
-    block_part_size: int
-    use_connection_pool: bool
+    max_concurrency: int = 10
+    block_part_size: int = 1024 * 1024
+    use_connection_pool: bool = True
     parity_blocks_count: int = 0
     chunk_buffer: int = 10
     encryption_key: Optional[bytes] = None
@@ -111,3 +113,4 @@ class SDKConfig:
     max_retries: Optional[int] = 3
     backoff_delay: Optional[int] = 1
     ipc_address: Optional[str] = None
+    erasure_code: Optional[ErasureCode] = None
