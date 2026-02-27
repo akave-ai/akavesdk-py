@@ -8,7 +8,7 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from hashlib import sha256
+import grpc
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -18,20 +18,20 @@ from .config import BLOCK_SIZE, ENCRYPTION_OVERHEAD, MIN_BUCKET_NAME_LENGTH, SDK
 from .connection import ConnectionPool
 from .dag import DAGRoot, build_dag, extract_block_data
 from .model import (
-    Chunk,
-    FileBlockDownload,
-    FileBlockUpload,
-    FileChunkDownload,
-    IPCBucket,
     IPCBucketCreateResult,
-    IPCFileChunkUploadV2,
-    IPCFileDownload,
-    IPCFileListItem,
+    IPCBucket,
     IPCFileMeta,
+    IPCFileListItem,
     IPCFileMetaV2,
+    IPCFileChunkUploadV2,
+    FileBlockUpload,
+    FileBlockDownload,
+    Chunk,
+    IPCFileDownload,
+    FileChunkDownload,
     IPCFileUpload,
-    UploadState,
     new_ipc_file_upload,
+    UploadState,
 )
 
 
@@ -41,7 +41,7 @@ class TxWaitSignal:
         self.Transaction = Transaction
 
 
-from private.encryption import decrypt, derive_key, encrypt
+from private.encryption import encrypt, derive_key, decrypt
 from private.pb import ipcnodeapi_pb2, ipcnodeapi_pb2_grpc
 
 try:
@@ -772,9 +772,7 @@ class IPC:
             from Crypto.Hash import keccak
 
             combined = bucket_id + file_name.encode()
-            hash_obj = keccak.new(digest_bits=256)
-            hash_obj.update(combined)
-            return hash_obj.digest()
+            return keccak(combined)
         except ImportError:
             raise SDKError("Failed to import required modules for file ID calculation")
         except Exception as e:
@@ -1020,7 +1018,7 @@ class IPC:
         bucket_id: bytes,
     ) -> tuple:
         try:
-            from private.eip712 import Domain, TypedData, sign
+            from private.eip712 import sign, Domain, TypedData
 
             nonce_bytes = nonce.to_bytes(32, byteorder="big")
             chunk_cid_obj = CID.decode(chunk_cid)
@@ -1361,13 +1359,12 @@ class IPC:
                     except Exception as e:
                         raise SDKError(f"failed to download block: {str(e)}")
 
-            data = b"".join([b for b in blocks if b is not None])
-            
-            if hasattr(self, 'erasure_code') and self.erasure_code is not None:
+            if hasattr(self, "erasure_code") and self.erasure_code is not None:
+
                 data = self.erasure_code.extract_data_blocks(blocks, chunk_download.size)
             else:
                 data = b"".join([b for b in blocks if b is not None])
-            
+
             if file_encryption_key:
                 from private.encryption import decrypt
 
