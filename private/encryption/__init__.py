@@ -1,3 +1,3 @@
-from .encryption import encrypt, decrypt, derive_key, make_gcm_cipher
+from .encryption import decrypt, derive_key, encrypt, make_gcm_cipher
 
 __all__ = ["encrypt", "decrypt", "derive_key", "make_gcm_cipher"]

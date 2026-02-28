@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
+from eth_account.signers.local import LocalAccount
 from eth_typing import Address, HexStr
 from web3 import Web3
 from web3.contract import Contract
-from eth_account.signers.local import LocalAccount
 
 
 class AkaveTokenMetaData:
@@ -43,13 +43,17 @@ class AkaveTokenTransactor:
         self.contract = contract
         self.web3 = web3
 
-    def grant_role(self, account: LocalAccount, role: bytes, grantee: Address, tx_params: Optional[Dict[str, Any]] = None) -> HexStr:
+    def grant_role(
+        self, account: LocalAccount, role: bytes, grantee: Address, tx_params: Optional[Dict[str, Any]] = None
+    ) -> HexStr:
         params = {"from": account.address, "gasPrice": self.web3.eth.gas_price}
         if tx_params:
             params.update(tx_params)
         tx = self.contract.functions.grantRole(role, grantee).build_transaction(params)
         signed = account.sign_transaction(tx)
-        tx_hash = self.web3.eth.send_raw_transaction(getattr(signed, "raw_transaction", getattr(signed, "rawTransaction")))
+        tx_hash = self.web3.eth.send_raw_transaction(
+            getattr(signed, "raw_transaction", getattr(signed, "rawTransaction"))
+        )
         return tx_hash.hex()
 
 
@@ -67,5 +71,3 @@ class AkaveToken:
 
 def new_akave_token(w3: Web3, address: Address) -> AkaveToken:
     return AkaveToken(w3, address)
-
-

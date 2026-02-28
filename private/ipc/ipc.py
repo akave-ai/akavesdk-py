@@ -2,36 +2,42 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from eth_utils import keccak, to_bytes, to_checksum_address
 
 try:
     from multiformats import CID
+
     MULTIFORMATS_AVAILABLE = True
 except ImportError:
     MULTIFORMATS_AVAILABLE = False
     CID = None
 
 try:
-    from ..eip712 import Domain as EIP712Domain, TypedData as EIP712TypedData, sign as eip712_sign
+    from ..eip712 import Domain as EIP712Domain
+    from ..eip712 import TypedData as EIP712TypedData
+    from ..eip712 import sign as eip712_sign
 except ImportError:
-    import sys
     import os
+    import sys
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from eip712 import Domain as EIP712Domain, TypedData as EIP712TypedData, sign as eip712_sign
+    from eip712 import Domain as EIP712Domain
+    from eip712 import TypedData as EIP712TypedData
+    from eip712 import sign as eip712_sign
 
 
 @dataclass
 class StorageData:
     chunk_cid: bytes
-    block_cid: bytes  
+    block_cid: bytes
     chunk_index: int
-    block_index: int  
-    node_id: bytes   
+    block_index: int
+    node_id: bytes
     nonce: int
     deadline: int
-    bucket_id: bytes  
+    bucket_id: bytes
 
     def to_message_dict(self) -> Dict[str, Any]:
         return {
@@ -53,40 +59,40 @@ def generate_nonce() -> int:
 def calculate_file_id(bucket_id: bytes, name: str) -> bytes:
     if not isinstance(bucket_id, (bytes, bytearray)):
         raise TypeError("bucket_id must be bytes")
-    
-    data = bucket_id + name.encode('utf-8')
+
+    data = bucket_id + name.encode("utf-8")
     return keccak(data)
 
 
 def calculate_bucket_id(bucket_name: str, address: str) -> bytes:
-    data = bucket_name.encode('utf-8')
-    
+    data = bucket_name.encode("utf-8")
+
     addr = address.lower()
     if addr.startswith("0x"):
         addr = addr[2:]
     if len(addr) != 40:
         raise ValueError("address must be a 20-byte hex string")
-    
+
     address_bytes = bytes.fromhex(addr)
     data += address_bytes
-    
+
     return keccak(data)
 
 
-def from_byte_array_cid(data: bytes) -> 'CID':
+def from_byte_array_cid(data: bytes) -> "CID":
     if not MULTIFORMATS_AVAILABLE:
         raise ImportError("multiformats library is required")
-    
+
     if len(data) != 32:
         raise ValueError(f"expected 32 bytes, got {len(data)}")
-    
+
     # CID v1, dag-pb (0x70), sha2-256 (0x12)
     # Construct CID bytes: version + codec + multihash
     # multihash format: hash_type (0x12 for sha2-256) + length (0x20 = 32) + hash_data
     multicodec_dagpb = bytes([0x70])
     multihash_sha256_header = bytes([0x12, 0x20])
     cid_bytes = bytes([0x01]) + multicodec_dagpb + multihash_sha256_header + data
-    
+
     return CID.decode(cid_bytes)
 
 

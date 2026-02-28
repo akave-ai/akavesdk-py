@@ -1,23 +1,24 @@
+from typing import Any, Dict, Optional
 
-from typing import Optional, Any, Dict
 from web3.exceptions import ContractLogicError
 
 
 def error_hash_to_error(error_data: Any) -> Exception:
-    if hasattr(error_data, 'args') and error_data.args:
+    if hasattr(error_data, "args") and error_data.args:
         error_str = str(error_data.args[0]) if error_data.args else str(error_data)
     else:
         error_str = str(error_data)
     hash_code = None
     if isinstance(error_str, str):
         import re
-        hex_match = re.search(r'0x[a-fA-F0-9]{8}', error_str)
+
+        hex_match = re.search(r"0x[a-fA-F0-9]{8}", error_str)
         if hex_match:
             hash_code = hex_match.group(0).lower()
-    
+
     error_map = {
         "0x497ef2c2": "BucketAlreadyExists",
-        "0x4f4b202a": "BucketInvalid", 
+        "0x4f4b202a": "BucketInvalid",
         "0xdc64d0ad": "BucketInvalidOwner",
         "0x938a92b7": "BucketNonexists",
         "0x89fddc00": "BucketNonempty",
@@ -62,9 +63,9 @@ def error_hash_to_error(error_data: Any) -> Exception:
         "0x923b8cbb": "NonceAlreadyUsed",
         "0x9605a010": "OffsetOutOfBounds",
     }
-    
+
     if hash_code and hash_code in error_map:
-        return Exception(error_map[hash_code]) 
+        return Exception(error_map[hash_code])
     return error_data if isinstance(error_data, Exception) else Exception(str(error_data))
 
 

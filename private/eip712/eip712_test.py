@@ -1,18 +1,19 @@
 # Copyright (C) 2025 Akave
 # See LICENSE for copying information.
 
-import sys
 import os
+import sys
+from typing import Any, Dict, List
+
 import pytest
-from typing import Dict, List, Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from private.eip712.eip712 import sign, recover_signer_address, Domain, TypedData
+from private.eip712.eip712 import Domain, TypedData, recover_signer_address, sign
 
 
 class TestSignatureAgainstContract:
-    
+
     test_cases = [
         {
             "chunkCID": "86b258127d599eb74c729f97",
@@ -43,12 +44,12 @@ class TestSignatureAgainstContract:
             "bucketID": "a928e74732b6ca5fd1bf7f3eedfdca3c578a05297157e239e7f7861de2b40f42",
             "storageAddress": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
             "signature": "8ccd5143f4b87e898021c4b3a4bf73e3e8d6e8b97e39106374fac72be610629463a0ba6fc4c975c41fbb1ad3940f76a30e6cb916a8e01d09afbe24538ce151ca1b",
-        }
+        },
     ]
-    
+
     @pytest.mark.parametrize("tc", test_cases)
     def test_signature_against_contract(self, tc):
-        
+
         data_types = {
             "StorageData": [
                 TypedData("chunkCID", "bytes"),
@@ -61,19 +62,14 @@ class TestSignatureAgainstContract:
                 TypedData("bucketId", "bytes32"),
             ]
         }
-        
-        domain = Domain(
-            name="Storage",
-            version="1",
-            chain_id=31337,
-            verifying_contract=tc["storageAddress"]
-        )
-        
+
+        domain = Domain(name="Storage", version="1", chain_id=31337, verifying_contract=tc["storageAddress"])
+
         chunk_cid = bytes.fromhex(tc["chunkCID"])
         block_cid = bytes.fromhex(tc["blockCID"])
         node_id = bytes.fromhex(tc["nodeID"])
         bucket_id = bytes.fromhex(tc["bucketID"])
-        
+
         data_message = {
             "chunkCID": chunk_cid,
             "blockCID": block_cid,
@@ -84,34 +80,34 @@ class TestSignatureAgainstContract:
             "deadline": tc["deadline"],
             "bucketId": bucket_id,
         }
-        
+
         private_key_hex = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
         private_key_bytes = bytes.fromhex(private_key_hex)
-        
+
         signature = sign(private_key_bytes, domain, "StorageData", data_types, data_message)
-        
-        assert signature.hex() == tc["signature"], \
-            f"Signature mismatch for test case with nonce {tc['nonce']}"
+
+        assert signature.hex() == tc["signature"], f"Signature mismatch for test case with nonce {tc['nonce']}"
 
 
 def test_signature_recovery():
-    
+
     private_key_hex = "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
     private_key_bytes = bytes.fromhex(private_key_hex)
-    
+
     from eth_keys import keys
+
     private_key_obj = keys.PrivateKey(private_key_bytes)
     expected_address = private_key_obj.public_key.to_checksum_address()
-    
+
     block_cid = bytearray(32)
     block_cid[:9] = b"blockCID1"
-    
+
     node_id = bytearray(32)
     node_id[:7] = b"node id"
-    
+
     bucket_id = bytearray(32)
     bucket_id[:9] = b"bucket id"
-    
+
     data_types = {
         "StorageData": [
             TypedData("chunkCID", "bytes"),
@@ -124,14 +120,11 @@ def test_signature_recovery():
             TypedData("bucketId", "bytes32"),
         ]
     }
-    
+
     domain = Domain(
-        name="Storage",
-        version="1",
-        chain_id=31337,
-        verifying_contract="0x1234567890123456789012345678901234567890"
+        name="Storage", version="1", chain_id=31337, verifying_contract="0x1234567890123456789012345678901234567890"
     )
-    
+
     data_message = {
         "chunkCID": b"rootCID1",
         "blockCID": bytes(block_cid),
@@ -142,17 +135,15 @@ def test_signature_recovery():
         "deadline": 12345,
         "bucketId": bytes(bucket_id),
     }
-    
+
     signature = sign(private_key_bytes, domain, "StorageData", data_types, data_message)
-    
-    recovered_address = recover_signer_address(
-        signature, domain, "StorageData", data_types, data_message
-    )
-    
-    assert recovered_address.lower() == expected_address.lower(), \
-        f"Address mismatch: expected {expected_address}, got {recovered_address}"
+
+    recovered_address = recover_signer_address(signature, domain, "StorageData", data_types, data_message)
+
+    assert (
+        recovered_address.lower() == expected_address.lower()
+    ), f"Address mismatch: expected {expected_address}, got {recovered_address}"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
