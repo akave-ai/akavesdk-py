@@ -407,20 +407,31 @@ class TestFileDelete:
         self.mock_ipc.eth = Mock()
         self.mock_ipc.eth.eth = Mock()
         
-        self.config = SDKConfig(address="test:5500")
+        self.config = SDKConfig(
+            address="test:5500",
+            max_concurrency=1,
+            block_part_size=1024,
+            use_connection_pool=False,
+            streaming_max_blocks_in_chunk=10
+        )
         self.ipc = IPC(self.mock_client, self.mock_conn, self.mock_ipc, self.config)
     
     def test_file_delete_empty_bucket(self):
-        with pytest.raises(SDKError, match="empty bucket name"):
+        with pytest.raises(SDKError, match="empty bucket or file name"):
             self.ipc.file_delete(None, "", "file.txt")
     
     def test_file_delete_empty_filename(self):
-        with pytest.raises(SDKError, match="empty file name"):
+        with pytest.raises(SDKError, match="empty bucket or file name"):
             self.ipc.file_delete(None, "bucket", "")
     
     def test_file_delete_success(self):
         mock_receipt = Mock()
         mock_receipt.status = 1
+        
+        # Mocks must return subscriptable elements since IPC expects bucket[0] and file_info[0]
+        self.mock_ipc.storage.get_bucket_by_name.return_value = (b"mock_bucket_id", "mock_bucket_name")
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"mock_file_id", "mock_file_name")
+        self.mock_ipc.storage.get_file_index_by_id.return_value = 2  # mock returning index 2
         
         self.mock_ipc.storage.delete_file.return_value = "0xtx"
         self.mock_ipc.eth.eth.wait_for_transaction_receipt.return_value = mock_receipt
