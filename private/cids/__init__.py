@@ -1,3 +1,5 @@
-from .cids import CIDError, verify, verify_raw
+
+from .cids import verify_raw, verify, CIDError
 
 __all__ = ["verify_raw", "verify", "CIDError"]
+
