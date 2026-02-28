@@ -23,10 +23,10 @@ class Size:
     def to_int(self) -> int:
         return self.size
 
-    def mul_int(self, n: int) -> 'Size':
+    def mul_int(self, n: int) -> "Size":
         return Size(self.size * n)
 
-    def div_int(self, n: int) -> 'Size':
+    def div_int(self, n: int) -> "Size":
         return Size(self.size // n)
 
     def format_size(self) -> str:

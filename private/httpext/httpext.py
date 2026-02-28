@@ -38,9 +38,7 @@ def range_download(
                 body = b""
 
             body_text = body.decode(errors="replace")
-            raise Exception(
-                f"download failed with status {response.status_code}: {body_text}"
-            )
+            raise Exception(f"download failed with status {response.status_code}: {body_text}")
 
         try:
             data = response.content
@@ -53,5 +51,3 @@ def range_download(
             response.close()
         except Exception as close_exc:  # pragma: no cover - defensive
             logging.debug("error closing HTTP response: %s", close_exc)
-
-
