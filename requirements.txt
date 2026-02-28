@@ -27,7 +27,7 @@ watchdog==3.0.0
 PyYAML==6.0.1
 
 #math
-cryptography>=43.0.1
+cryptography==36.0.0
 
 #erasure
 reedsolo

@@ -754,7 +754,7 @@ class IPC:
 
     def _calculate_file_id(self, bucket_id: bytes, file_name: str) -> bytes:
         try:
-            from Crypto.Hash import keccak  # nosec
+            from Crypto.Hash import keccak
 
             combined = bucket_id + file_name.encode()
             hash_obj = keccak.new(digest_bits=256)

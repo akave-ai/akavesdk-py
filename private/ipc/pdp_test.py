@@ -28,7 +28,7 @@ def pick_private_key() -> str:
 def fill_blocks(dial_uri: str):
     payload = {"jsonrpc": "2.0", "method": "anvil_mine", "params": [], "id": 1}
 
-    response = requests.post(dial_uri, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+    response = requests.post(dial_uri, json=payload, headers={"Content-Type": "application/json"})
     response.raise_for_status()
 
 

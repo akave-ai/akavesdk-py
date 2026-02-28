@@ -3,7 +3,7 @@ import struct
 import sys
 from typing import Any, Dict, List
 
-from Crypto.Hash import keccak  # nosec
+from Crypto.Hash import keccak
 from eth_keys import keys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
