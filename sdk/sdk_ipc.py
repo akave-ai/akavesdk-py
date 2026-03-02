@@ -427,30 +427,18 @@ class IPC:
             file_id = file_info[0]
             file_index = None
             try:
-                file_index = self.ipc.storage.get_file_index_by_id(
+                # The contract returns the index as uint256. If web3.py wraps it in a tuple, we unwrap it.
+                file_index_result = self.ipc.storage.get_file_index_by_id(
                     {"from": self.ipc.auth.address}, encrypted_bucket_name, file_id
                 )
+                if isinstance(file_index_result, tuple):
+                    file_index = file_index_result[0]
+                else:
+                    file_index = file_index_result
                 logging.info(f"Got file index from contract: {file_index}")
             except Exception as index_err:
-                logging.warning(f"Failed to get file index from contract: {index_err}")
-                logging.info("Falling back to manual index calculation via file listing...")
-
-                try:
-                    files = self.list_files(ctx, bucket_name)
-                    for i, f in enumerate(files):
-                        if f.name == encrypted_file_name:
-                            file_index = i
-                            logging.info(f"Calculated manual file index: {file_index} (position in list)")
-                            break
-
-                    if file_index is None:
-                        raise SDKError(f"file '{file_name}' not found in bucket file list")
-
-                except Exception as list_err:
-                    logging.error(f"Failed to calculate manual index: {list_err}")
-                    raise SDKError(
-                        f"failed to determine file index: contract method failed and manual calculation failed: {index_err}"
-                    )
+                logging.error(f"Failed to get file index from contract: {index_err}")
+                raise SDKError(f"failed to determine file index from contract: {index_err}")
 
             # Validate that we got a valid index
             if file_index is None or (isinstance(file_index, int) and file_index < 0):
