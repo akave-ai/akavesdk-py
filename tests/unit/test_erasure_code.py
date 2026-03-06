@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import Mock, patch
 import math
+from unittest.mock import Mock, patch
 
-from sdk.erasure_code import ErasureCode, missing_shards_idx, split_into_blocks
+import pytest
+
+from private.erasure_code.erasure_code import ErasureCode, missing_shards_idx, split_into_blocks
 
 
 class TestMissingShardsIdx:

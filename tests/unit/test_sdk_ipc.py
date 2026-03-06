@@ -1,4 +1,3 @@
-
 from unittest.mock import Mock
 
 import pytest
@@ -12,22 +11,23 @@ class TestCreateBucket:
     """Test create bucket functionality."""
 
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch, call
 import io
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, call, patch
 
-from sdk.sdk_ipc import IPC, encryption_key, maybe_encrypt_metadata, to_ipc_proto_chunk, TxWaitSignal
+import pytest
+
 from sdk.config import SDKConfig, SDKError
 from sdk.model import (
-    IPCBucketCreateResult,
+    Chunk,
+    FileBlockUpload,
     IPCBucket,
+    IPCBucketCreateResult,
+    IPCFileDownload,
     IPCFileMeta,
     IPCFileUpload,
-    IPCFileDownload,
-    FileBlockUpload,
-    Chunk,
 )
+from sdk.sdk_ipc import IPC, TxWaitSignal, encryption_key, maybe_encrypt_metadata, to_ipc_proto_chunk
 
 
 class TestTxWaitSignal:
@@ -167,7 +167,6 @@ class TestCreateBucket:
             address="test:5500", max_concurrency=10, block_part_size=1048576, use_connection_pool=True
         )
         self.ipc = IPC(self.mock_client, self.mock_conn, self.mock_ipc, self.config)
-
 
         self.config = SDKConfig(address="test:5500")
         self.ipc = IPC(self.mock_client, self.mock_conn, self.mock_ipc, self.config)

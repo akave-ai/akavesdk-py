@@ -1,6 +1,7 @@
 import math
-from reedsolo import RSCodec, ReedSolomonError
 from itertools import combinations
+
+from reedsolo import ReedSolomonError, RSCodec
 
 
 def missing_shards_idx(n, k):

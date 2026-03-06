@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
+from private.erasure_code.erasure_code import ErasureCode
 from private.memory.memory import Size
-from .erasure_code import ErasureCode
 
 BLOCK_SIZE = 1 * Size.MB
 ENCRYPTION_OVERHEAD = 28  # 16 bytes for AES-GCM tag, 12 bytes for nonce
@@ -41,9 +41,7 @@ class Config:
         self.private_key = private_key
         self.storage_contract_address = storage_contract_address
         self.access_contract_address = access_contract_address
-        self.policy_factory_contract_address = (
-            policy_factory_contract_address or ""
-        )
+        self.policy_factory_contract_address = policy_factory_contract_address or ""
 
     @staticmethod
     def default():

@@ -8,7 +8,6 @@ import secrets
 import threading
 import time
 from datetime import datetime
-import grpc
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -18,20 +17,20 @@ from .config import BLOCK_SIZE, ENCRYPTION_OVERHEAD, MIN_BUCKET_NAME_LENGTH, SDK
 from .connection import ConnectionPool
 from .dag import DAGRoot, build_dag, extract_block_data
 from .model import (
-    IPCBucketCreateResult,
-    IPCBucket,
-    IPCFileMeta,
-    IPCFileListItem,
-    IPCFileMetaV2,
-    IPCFileChunkUploadV2,
-    FileBlockUpload,
-    FileBlockDownload,
     Chunk,
-    IPCFileDownload,
+    FileBlockDownload,
+    FileBlockUpload,
     FileChunkDownload,
+    IPCBucket,
+    IPCBucketCreateResult,
+    IPCFileChunkUploadV2,
+    IPCFileDownload,
+    IPCFileListItem,
+    IPCFileMeta,
+    IPCFileMetaV2,
     IPCFileUpload,
-    new_ipc_file_upload,
     UploadState,
+    new_ipc_file_upload,
 )
 
 
@@ -41,7 +40,7 @@ class TxWaitSignal:
         self.Transaction = Transaction
 
 
-from private.encryption import encrypt, derive_key, decrypt
+from private.encryption import decrypt, derive_key, encrypt
 from private.pb import ipcnodeapi_pb2, ipcnodeapi_pb2_grpc
 
 try:
@@ -1018,7 +1017,7 @@ class IPC:
         bucket_id: bytes,
     ) -> tuple:
         try:
-            from private.eip712 import sign, Domain, TypedData
+            from private.eip712 import Domain, TypedData, sign
 
             nonce_bytes = nonce.to_bytes(32, byteorder="big")
             chunk_cid_obj = CID.decode(chunk_cid)
