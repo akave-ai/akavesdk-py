@@ -427,15 +427,17 @@ class IPC:
             file_id = file_info[0]
             file_index = None
             try:
-                # The contract returns the index as uint256. If web3.py wraps it in a tuple, we unwrap it.
-                file_index_result = self.ipc.storage.get_file_index_by_id(
-                    {"from": self.ipc.auth.address}, encrypted_bucket_name, file_id
+                # Use get_full_file_info which returns (File struct, index, exists)
+                # This is more robust than get_file_index_by_id on the live network
+                full_info = self.ipc.storage.get_full_file_info(
+                    encrypted_bucket_name, encrypted_file_name, bucket_id, self.ipc.auth.address
                 )
-                if isinstance(file_index_result, tuple):
-                    file_index = file_index_result[0]
-                else:
-                    file_index = file_index_result
+                if not full_info[2]:
+                    raise SDKError(f"file '{file_name}' not found in bucket '{bucket_name}'")
+                file_index = full_info[1]
                 logging.info(f"Got file index from contract: {file_index}")
+            except SDKError:
+                raise
             except Exception as index_err:
                 logging.error(f"Failed to get file index from contract: {index_err}")
                 raise SDKError(f"failed to determine file index from contract: {index_err}")

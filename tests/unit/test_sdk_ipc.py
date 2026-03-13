@@ -86,7 +86,8 @@ class TestFileDelete:
         # Mocks must return subscriptable elements since IPC expects bucket[0] and file_info[0]
         self.mock_ipc.storage.get_bucket_by_name.return_value = (b"mock_bucket_id", "mock_bucket_name")
         self.mock_ipc.storage.get_file_by_name.return_value = (b"mock_file_id", "mock_file_name")
-        self.mock_ipc.storage.get_file_index_by_id.return_value = 2  # mock returning index 2
+        # get_full_file_info returns (File struct, index, exists)
+        self.mock_ipc.storage.get_full_file_info.return_value = ((b"mock_file_id", "mock_file_name"), 2, True)
 
         self.mock_ipc.storage.delete_file.return_value = "0xtx"
         self.mock_ipc.eth.eth.wait_for_transaction_receipt.return_value = mock_receipt
