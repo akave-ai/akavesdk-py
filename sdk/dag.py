@@ -154,7 +154,7 @@ class DAGRoot:
 
 @dataclass
 class ChunkDAG:
-    cid: Any  # Chunk CID
+    cid: CID  # Chunk CID
     raw_data_size: int  # size of data read from disk
     encoded_size: int  # encoded size (was proto_node_size)
     blocks: List[FileBlockUpload]  # Blocks in the chunk
