@@ -262,6 +262,46 @@ The Akave SDK for Python uses a set of Python dataclasses to represent the data 
 
 The model structure is designed to be intuitive to Python developers while maintaining compatibility with the Akave API. All serialization/deserialization between Python objects and gRPC messages is handled automatically by the SDK.
 
+## Contributing
+
+We welcome contributions! Before submitting a PR, please ensure your code passes all quality checks.
+
+### Code Quality Requirements
+
+Run these commands before pushing to ensure CI passes:
+
+```bash
+# Install code quality tools
+pip install black isort flake8
+
+# 1. Format code with Black
+black akavesdk/ private/ sdk/ tests/
+
+# 2. Sort imports with isort
+isort akavesdk/ private/ sdk/ tests/
+
+# 3. Check linting with flake8
+flake8 akavesdk/ private/ sdk/ tests/ --count --max-complexity=10 --max-line-length=120
+```
+
+### Running Tests
+
+```bash
+pytest tests/unit -v
+
+pytest tests/unit -v --cov=akavesdk --cov=private --cov=sdk
+```
+
+### Quick Pre-Push Checklist
+
+```bash
+# One-liner to format, sort, and check
+black akavesdk/ private/ sdk/ tests/ && \
+isort akavesdk/ private/ sdk/ tests/ && \
+flake8 akavesdk/ private/ sdk/ tests/ --max-complexity=10 --max-line-length=120 && \
+pytest tests/unit -v
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
