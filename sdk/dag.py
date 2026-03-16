@@ -1,7 +1,7 @@
 import hashlib
 import io
 from dataclasses import dataclass
-from typing import Any, BinaryIO, List, Optional, Tuple
+from typing import Any, BinaryIO, List, Optional, Tuple, Union
 
 try:
     from ipld_dag_pb import PBLink, PBNode
@@ -154,7 +154,7 @@ class DAGRoot:
 
 @dataclass
 class ChunkDAG:
-    cid: CID  # Chunk CID
+    cid: Union[CID, str]  # Chunk CID: CID object when IPLD available, str in fallback paths
     raw_data_size: int  # size of data read from disk
     encoded_size: int  # encoded size (was proto_node_size)
     blocks: List[FileBlockUpload]  # Blocks in the chunk
