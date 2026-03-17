@@ -1,75 +1,66 @@
 """
-Real integration tests for IPC module against the Akave blockchain.
+Unit tests for IPC module.
 
-These tests connect to the live Akave network and exercise:
-- Bucket operations (create, view, list, delete)
-- File operations (upload, info, list, download, delete)
-- Access control (set public access)
-- Erasure coding (encode, decode, roundtrip)
-- Download flows with data integrity verification
-
-Requirements:
-  - Network access to connect.akave.ai:5500
-  - A valid private key with funds on the Akave subnet
-
-Environment variables (optional overrides):
-  AKAVE_PRIVATE_KEY   - hex private key (no 0x prefix)
-  AKAVE_NODE_ADDRESS  - node endpoint
+These tests use mocks to validate all IPC operations without requiring
+network access. For real blockchain integration tests, see
+tests/integration/test_ipc_upload.py
 """
 
 import io
-import os
-import time
+from unittest.mock import Mock, patch
 
+import grpc
 import pytest
 
-from akavesdk import SDK, SDKConfig
-from sdk.config import SDKError
-
-PRIVATE_KEY = os.environ.get(
-    "AKAVE_PRIVATE_KEY",
-    "a5c223e956644f1ba11f0dcc6f3df4992184ff3c919223744d0cf1db33dab4d6",
+from sdk.config import SDKConfig, SDKError
+from sdk.model import (
+    Chunk,
+    FileBlockDownload,
+    FileChunkDownload,
+    IPCBucket,
+    IPCBucketCreateResult,
+    IPCFileDownload,
+    IPCFileListItem,
+    IPCFileMeta,
+    IPCFileUpload,
 )
-NODE_ADDRESS = os.environ.get("AKAVE_NODE_ADDRESS", "connect.akave.ai:5500")
-
-# Unique bucket name per test run to avoid collisions
-TIMESTAMP = int(time.time())
-BUCKET_NAME = f"ipc-test-{TIMESTAMP}"
-
+from sdk.sdk_ipc import IPC
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Shared helpers
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def sdk_instance():
-    """Create a real SDK instance connected to the Akave network."""
-    config = SDKConfig(
-        address=NODE_ADDRESS,
-        private_key=PRIVATE_KEY,
-        max_concurrency=5,
-        block_part_size=128 * 1024,
+def _make_ipc_instance():
+    mock_ipc = Mock()
+    mock_ipc.auth = Mock()
+    mock_ipc.auth.address = "0x1234567890abcdef1234567890abcdef12345678"
+    mock_ipc.auth.key = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    mock_ipc.storage = Mock()
+    mock_ipc.eth = Mock()
+    mock_ipc.eth.eth = Mock()
+    mock_ipc.access_manager = Mock()
+    return mock_ipc
+
+
+def _make_config(**overrides):
+    defaults = dict(
+        address="test:5500",
+        max_concurrency=2,
+        block_part_size=1048576,
         use_connection_pool=True,
-        chunk_buffer=10,
     )
-    sdk = SDK(config)
-    yield sdk
-    sdk.close()
+    defaults.update(overrides)
+    return SDKConfig(**defaults)
 
 
-@pytest.fixture(scope="module")
-def ipc(sdk_instance):
-    """Create a real IPC instance."""
-    return sdk_instance.ipc()
-
-
-@pytest.fixture(scope="module")
-def bucket(ipc):
-    """Create the test bucket once for the entire module."""
-    result = ipc.create_bucket(None, BUCKET_NAME)
-    time.sleep(2)  # wait for on-chain propagation
-    return result
+def _make_ipc(mock_client=None, mock_conn=None, mock_ipc=None, config=None):
+    return IPC(
+        client=mock_client or Mock(),
+        conn=mock_conn or Mock(),
+        ipc_instance=mock_ipc or _make_ipc_instance(),
+        config=config or _make_config(),
+    )
 
 
 # ===================================================================
@@ -78,195 +69,372 @@ def bucket(ipc):
 
 
 class TestCreateBucket:
-    def test_create_bucket_success(self, bucket):
-        """Bucket creation should return a valid result with the right name."""
-        assert bucket is not None
-        assert bucket.name == BUCKET_NAME
-        assert bucket.created_at > 0
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.config = _make_config()
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config)
 
-    def test_create_bucket_invalid_short_name(self, ipc):
-        """Bucket name shorter than 3 chars should be rejected."""
+    def test_create_bucket_success(self):
+        mock_receipt = Mock()
+        mock_receipt.status = 1
+        mock_receipt.blockNumber = 100
+        mock_receipt.transactionHash = Mock()
+        mock_receipt.transactionHash.hex.return_value = "0xabc"
+
+        mock_block = Mock()
+        mock_block.timestamp = 1234567890
+
+        self.mock_ipc.storage.create_bucket.return_value = "0xtx"
+        self.mock_ipc.eth.eth.wait_for_transaction_receipt.return_value = mock_receipt
+        self.mock_ipc.eth.eth.get_block.return_value = mock_block
+
+        result = self.ipc.create_bucket(None, "test-bucket")
+
+        assert isinstance(result, IPCBucketCreateResult)
+        assert result.name == "test-bucket"
+        assert result.created_at == 1234567890
+
+    def test_create_bucket_invalid_short_name(self):
         with pytest.raises(SDKError, match="invalid bucket name"):
-            ipc.create_bucket(None, "ab")
+            self.ipc.create_bucket(None, "ab")
+
+    def test_create_bucket_transaction_failed(self):
+        mock_receipt = Mock()
+        mock_receipt.status = 0
+        mock_receipt.blockNumber = 100
+
+        self.mock_ipc.storage.create_bucket.return_value = "0xtx"
+        self.mock_ipc.eth.eth.wait_for_transaction_receipt.return_value = mock_receipt
+
+        with pytest.raises(SDKError, match="bucket creation failed"):
+            self.ipc.create_bucket(None, "test-bucket")
+
+    def test_create_bucket_storage_exception(self):
+        self.mock_ipc.storage.create_bucket.side_effect = Exception("rpc failure")
+
+        with pytest.raises(SDKError, match="bucket creation failed"):
+            self.ipc.create_bucket(None, "test-bucket")
 
 
 class TestViewBucket:
-    def test_view_bucket_success(self, ipc, bucket):
-        """Viewing an existing bucket should return its metadata."""
-        result = ipc.view_bucket(None, BUCKET_NAME)
-        assert result is not None
-        assert result.name == BUCKET_NAME
-        assert result.created_at > 0
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc)
 
-    def test_view_bucket_empty_name(self, ipc):
+    def test_view_bucket_success(self):
+        mock_response = Mock()
+        mock_response.id = "0xbucket_id"
+        mock_response.name = "my-bucket"
+        mock_response.created_at = Mock(seconds=1700000000)
+        self.mock_client.BucketView.return_value = mock_response
+
+        result = self.ipc.view_bucket(None, "my-bucket")
+        assert isinstance(result, IPCBucket)
+        assert result.name == "my-bucket"
+        assert result.created_at == 1700000000
+
+    def test_view_bucket_empty_name(self):
         with pytest.raises(SDKError, match="empty bucket name"):
-            ipc.view_bucket(None, "")
+            self.ipc.view_bucket(None, "")
 
-    def test_view_bucket_nonexistent(self, ipc):
-        """Viewing a bucket that doesn't exist should return None."""
-        result = ipc.view_bucket(None, f"nonexistent-bucket-{TIMESTAMP}")
-        assert result is None
+    def test_view_bucket_not_found_grpc(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.NOT_FOUND
+        rpc_error.details = lambda: "not found"
+        self.mock_client.BucketView.side_effect = rpc_error
+
+        assert self.ipc.view_bucket(None, "missing") is None
+
+    def test_view_bucket_not_found_in_details(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.INTERNAL
+        rpc_error.details = lambda: "bucket not found in storage"
+        self.mock_client.BucketView.side_effect = rpc_error
+
+        assert self.ipc.view_bucket(None, "missing") is None
+
+    def test_view_bucket_grpc_other_error(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.INTERNAL
+        rpc_error.details = lambda: "server exploded"
+        self.mock_client.BucketView.side_effect = rpc_error
+
+        with pytest.raises(SDKError, match="failed to view bucket"):
+            self.ipc.view_bucket(None, "my-bucket")
+
+    def test_view_bucket_none_response(self):
+        self.mock_client.BucketView.return_value = None
+        assert self.ipc.view_bucket(None, "my-bucket") is None
+
+    def test_view_bucket_no_created_at(self):
+        mock_response = Mock(spec=["id", "name"])
+        mock_response.id = "0x123"
+        mock_response.name = "no-time"
+        self.mock_client.BucketView.return_value = mock_response
+
+        result = self.ipc.view_bucket(None, "no-time")
+        assert result.created_at == 0
+
+    def test_view_bucket_generic_not_found(self):
+        self.mock_client.BucketView.side_effect = Exception("not found in db")
+        assert self.ipc.view_bucket(None, "x") is None
+
+    def test_view_bucket_generic_other(self):
+        self.mock_client.BucketView.side_effect = Exception("disk full")
+        with pytest.raises(SDKError, match="failed to get bucket"):
+            self.ipc.view_bucket(None, "x")
 
 
 class TestListBuckets:
-    def test_list_buckets_contains_ours(self, ipc, bucket):
-        """list_buckets should include the bucket we just created."""
-        buckets = ipc.list_buckets(None)
-        assert isinstance(buckets, list)
-        names = [b.name for b in buckets]
-        assert BUCKET_NAME in names
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
 
-    def test_list_buckets_returns_list(self, ipc):
-        result = ipc.list_buckets(None)
-        assert isinstance(result, list)
+    def test_list_buckets_success(self):
+        b1 = Mock(name="a", created_at=Mock(seconds=1000))
+        b1.name = "bucket-a"
+        b2 = Mock(name="b", created_at=Mock(seconds=2000))
+        b2.name = "bucket-b"
+
+        self.mock_client.BucketList.return_value = Mock(buckets=[b1, b2])
+
+        result = self.ipc.list_buckets(None)
+        assert len(result) == 2
+        assert result[0].name == "bucket-a"
+
+    def test_list_buckets_empty(self):
+        self.mock_client.BucketList.return_value = Mock(buckets=[])
+        assert self.ipc.list_buckets(None) == []
+
+    def test_list_buckets_no_buckets_field(self):
+        self.mock_client.BucketList.return_value = Mock(spec=[])
+        assert self.ipc.list_buckets(None) == []
+
+    def test_list_buckets_zero_limit_uses_default(self):
+        self.mock_client.BucketList.return_value = Mock(buckets=[])
+        self.ipc.list_buckets(None, offset=0, limit=0)
+        request = self.mock_client.BucketList.call_args[0][0]
+        assert request.limit == 10000
+
+    def test_list_buckets_grpc_error(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.UNAVAILABLE
+        rpc_error.details = lambda: "connection refused"
+        self.mock_client.BucketList.side_effect = rpc_error
+
+        with pytest.raises(SDKError, match="failed to list buckets"):
+            self.ipc.list_buckets(None)
+
+    def test_list_buckets_generic_exception(self):
+        self.mock_client.BucketList.side_effect = Exception("timeout")
+        with pytest.raises(SDKError, match="failed to list buckets"):
+            self.ipc.list_buckets(None)
+
+
+class TestDeleteBucket:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc)
+
+    def test_delete_bucket_empty_name(self):
+        with pytest.raises(SDKError, match="empty bucket name"):
+            self.ipc.delete_bucket(None, "")
+
+    def test_delete_bucket_success(self):
+        self.mock_client.BucketView.return_value = Mock(id="0xbucket_id_hex", name="my-bucket")
+        self.mock_ipc.storage.delete_bucket.return_value = "0xtx"
+
+        assert self.ipc.delete_bucket(None, "my-bucket") is None
+        self.mock_ipc.storage.delete_bucket.assert_called_once()
+
+    def test_delete_bucket_not_found(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.NOT_FOUND
+        rpc_error.details = lambda: "not found"
+        self.mock_client.BucketView.side_effect = rpc_error
+
+        with pytest.raises(SDKError, match="bucket .* not found"):
+            self.ipc.delete_bucket(None, "ghost")
+
+    def test_delete_bucket_no_id(self):
+        self.mock_client.BucketView.return_value = Mock(spec=["name"], name="x")
+        with pytest.raises(SDKError):
+            self.ipc.delete_bucket(None, "x")
+
+    def test_delete_bucket_blockchain_failure(self):
+        self.mock_client.BucketView.return_value = Mock(id="0xabc", name="x")
+        self.mock_ipc.storage.delete_bucket.side_effect = Exception("gas limit")
+        with pytest.raises(SDKError, match="failed to delete bucket"):
+            self.ipc.delete_bucket(None, "x")
 
 
 # ===================================================================
-# File upload & info
+# File operations
 # ===================================================================
-
-
-class TestFileUpload:
-    def test_upload_small_file(self, ipc, bucket):
-        """Upload a small file and verify metadata comes back."""
-        file_name = f"small_{TIMESTAMP}.bin"
-        data = b"Hello Akave IPC integration test!" * 100  # ~3.3KB
-
-        meta = ipc.upload(None, BUCKET_NAME, file_name, io.BytesIO(data))
-
-        assert meta is not None
-        assert meta.root_cid
-        assert meta.size == len(data)
-        assert meta.encoded_size > 0
-
-    def test_upload_empty_bucket_name(self, ipc, bucket):
-        with pytest.raises(SDKError):
-            ipc.upload(None, "", "file.bin", io.BytesIO(b"data"))
-
-    def test_upload_empty_file_name(self, ipc, bucket):
-        with pytest.raises(SDKError):
-            ipc.upload(None, BUCKET_NAME, "", io.BytesIO(b"data"))
 
 
 class TestFileInfo:
-    def test_file_info_success(self, ipc, bucket):
-        """Upload a file, then retrieve its info."""
-        file_name = f"info_{TIMESTAMP}.bin"
-        data = b"file info test data" * 50
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
 
-        ipc.upload(None, BUCKET_NAME, file_name, io.BytesIO(data))
-        time.sleep(1)
+    def test_file_info_success(self):
+        mock_response = Mock(
+            root_cid="bafyabc",
+            file_name="data.bin",
+            bucket_name="my-bucket",
+            encoded_size=2048,
+            actual_size=1024,
+            is_public=False,
+            created_at=Mock(seconds=1700000000),
+        )
+        self.mock_client.FileView.return_value = mock_response
 
-        info = ipc.file_info(None, BUCKET_NAME, file_name)
-        assert info is not None
-        assert info.name == file_name
-        assert info.bucket_name == BUCKET_NAME
-        assert info.root_cid != ""
-        assert info.actual_size > 0
+        result = self.ipc.file_info(None, "my-bucket", "data.bin")
+        assert isinstance(result, IPCFileMeta)
+        assert result.root_cid == "bafyabc"
+        assert result.actual_size == 1024
 
-    def test_file_info_empty_bucket(self, ipc):
+    def test_file_info_empty_bucket(self):
         with pytest.raises(SDKError, match="empty bucket name"):
-            ipc.file_info(None, "", "file.txt")
+            self.ipc.file_info(None, "", "file.txt")
 
-    def test_file_info_empty_file(self, ipc):
+    def test_file_info_empty_file(self):
         with pytest.raises(SDKError, match="empty file name"):
-            ipc.file_info(None, "bucket", "")
+            self.ipc.file_info(None, "bucket", "")
 
-    def test_file_info_nonexistent(self, ipc, bucket):
-        """file_info for a file that doesn't exist should return None."""
-        result = ipc.file_info(None, BUCKET_NAME, f"ghost_{TIMESTAMP}.bin")
-        assert result is None
+    def test_file_info_not_found_grpc(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.NOT_FOUND
+        rpc_error.details = lambda: "file not found"
+        self.mock_client.FileView.side_effect = rpc_error
+
+        assert self.ipc.file_info(None, "bucket", "missing.txt") is None
+
+    def test_file_info_not_exist_grpc(self):
+        """Server returns 'file not exists' with UNKNOWN status code."""
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.UNKNOWN
+        rpc_error.details = lambda: "file not exists: ghost.bin"
+        self.mock_client.FileView.side_effect = rpc_error
+
+        assert self.ipc.file_info(None, "bucket", "ghost.bin") is None
+
+    def test_file_info_none_response(self):
+        self.mock_client.FileView.return_value = None
+        assert self.ipc.file_info(None, "bucket", "x") is None
+
+    def test_file_info_grpc_other_error(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.INTERNAL
+        rpc_error.details = lambda: "internal server error"
+        self.mock_client.FileView.side_effect = rpc_error
+
+        with pytest.raises(SDKError, match="failed to get file info"):
+            self.ipc.file_info(None, "bucket", "file.txt")
+
+    def test_file_info_generic_not_exist(self):
+        self.mock_client.FileView.side_effect = Exception("file not exists")
+        assert self.ipc.file_info(None, "bucket", "x") is None
+
+    def test_file_info_generic_other(self):
+        self.mock_client.FileView.side_effect = Exception("network error")
+        with pytest.raises(SDKError, match="failed to get file info"):
+            self.ipc.file_info(None, "bucket", "file.txt")
 
 
 class TestListFiles:
-    def test_list_files_contains_uploaded(self, ipc, bucket):
-        """Upload a file, then verify it appears in list_files."""
-        file_name = f"listf_{TIMESTAMP}.bin"
-        data = b"list files test" * 100
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
 
-        ipc.upload(None, BUCKET_NAME, file_name, io.BytesIO(data))
-        time.sleep(1)
+    def test_list_files_success(self):
+        f1 = Mock(name="f1", root_cid="bafya", encoded_size=1024, actual_size=512, created_at=Mock(seconds=1000))
+        f1.name = "file-a.txt"
+        f2 = Mock(name="f2", root_cid="bafyb", encoded_size=2048, actual_size=1024, created_at=Mock(seconds=2000))
+        f2.name = "file-b.bin"
+        self.mock_client.FileList.return_value = Mock(list=[f1, f2])
 
-        files = ipc.list_files(None, BUCKET_NAME)
-        assert isinstance(files, list)
-        assert any(f.name == file_name for f in files)
+        result = self.ipc.list_files(None, "my-bucket")
+        assert len(result) == 2
+        assert isinstance(result[0], IPCFileListItem)
 
-    def test_list_files_empty_bucket_name(self, ipc):
+    def test_list_files_empty_bucket(self):
         with pytest.raises(SDKError, match="empty bucket name"):
-            ipc.list_files(None, "")
+            self.ipc.list_files(None, "")
 
+    def test_list_files_empty_result(self):
+        self.mock_client.FileList.return_value = Mock(list=[])
+        assert self.ipc.list_files(None, "empty") == []
 
-# ===================================================================
-# Download flow
-# ===================================================================
+    def test_list_files_no_list_field(self):
+        self.mock_client.FileList.return_value = Mock(spec=[])
+        assert self.ipc.list_files(None, "bucket") == []
 
-
-class TestDownloadFlow:
-    def test_upload_download_roundtrip(self, ipc, bucket):
-        """Upload data, download it back, verify byte-for-byte match."""
-        file_name = f"roundtrip_{TIMESTAMP}.bin"
-        original_data = bytes(range(256)) * 40  # ~10KB varied binary
-
-        # Upload
-        ipc.upload(None, BUCKET_NAME, file_name, io.BytesIO(original_data))
-        time.sleep(1)
-
-        # Download
-        file_download = ipc.create_file_download(None, BUCKET_NAME, file_name)
-        writer = io.BytesIO()
-        ipc.download(None, file_download, writer)
-
-        downloaded = writer.getvalue()
-        assert (
-            downloaded == original_data
-        ), f"Data mismatch: uploaded {len(original_data)} bytes, downloaded {len(downloaded)} bytes"
-
-    def test_create_file_download_empty_bucket(self, ipc):
-        with pytest.raises(SDKError, match="empty bucket name"):
-            ipc.create_file_download(None, "", "file.bin")
-
-    def test_create_file_download_empty_file(self, ipc):
-        with pytest.raises(SDKError, match="empty file name"):
-            ipc.create_file_download(None, "bucket", "")
-
-
-# ===================================================================
-# File delete
-# ===================================================================
+    def test_list_files_grpc_error(self):
+        rpc_error = grpc.RpcError()
+        rpc_error.code = lambda: grpc.StatusCode.UNAVAILABLE
+        rpc_error.details = lambda: "connection refused"
+        self.mock_client.FileList.side_effect = rpc_error
+        with pytest.raises(SDKError, match="failed to list files"):
+            self.ipc.list_files(None, "bucket")
 
 
 class TestFileDelete:
-    def test_file_delete_empty_bucket(self, ipc):
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.config = _make_config(max_concurrency=1, block_part_size=1024, use_connection_pool=False)
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config)
+
+    def test_file_delete_empty_bucket(self):
         with pytest.raises(SDKError, match="empty bucket or file name"):
-            ipc.file_delete(None, "", "file.txt")
+            self.ipc.file_delete(None, "", "file.txt")
 
-    def test_file_delete_empty_filename(self, ipc):
+    def test_file_delete_empty_filename(self):
         with pytest.raises(SDKError, match="empty bucket or file name"):
-            ipc.file_delete(None, "bucket", "")
+            self.ipc.file_delete(None, "bucket", "")
 
-    def test_file_delete_whitespace_only(self, ipc):
+    def test_file_delete_whitespace_only(self):
         with pytest.raises(SDKError, match="empty bucket or file name"):
-            ipc.file_delete(None, "   ", "file.txt")
+            self.ipc.file_delete(None, "   ", "file.txt")
 
-    def test_file_delete_success(self, ipc, bucket):
-        """Upload a file, delete it, verify it's gone."""
-        file_name = f"todelete_{TIMESTAMP}.bin"
-        data = b"delete me" * 100
+    def test_file_delete_success(self):
+        self.mock_ipc.storage.get_bucket_by_name.return_value = (b"bucket_id", "bucket")
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"file_id", "file")
+        self.mock_ipc.storage.get_full_file_info.return_value = ((b"file_id", "file"), 2, True)
+        self.mock_ipc.storage.delete_file.return_value = "0xtx"
 
-        ipc.upload(None, BUCKET_NAME, file_name, io.BytesIO(data))
-        time.sleep(1)
+        self.ipc.file_delete(None, "test-bucket", "test-file.txt")
+        self.mock_ipc.storage.delete_file.assert_called_once()
 
-        # Verify exists
-        info = ipc.file_info(None, BUCKET_NAME, file_name)
-        assert info is not None
+    def test_file_delete_bucket_not_found(self):
+        self.mock_ipc.storage.get_bucket_by_name.return_value = None
+        with pytest.raises(SDKError, match="bucket .* not found"):
+            self.ipc.file_delete(None, "missing", "file.txt")
 
-        # Delete
-        ipc.file_delete(None, BUCKET_NAME, file_name)
-        time.sleep(1)
+    def test_file_delete_file_not_found(self):
+        self.mock_ipc.storage.get_bucket_by_name.return_value = (b"id", "b")
+        self.mock_ipc.storage.get_file_by_name.return_value = None
+        with pytest.raises(SDKError, match="file does not exist"):
+            self.ipc.file_delete(None, "bucket", "ghost.txt")
 
-        # Verify gone
-        info_after = ipc.file_info(None, BUCKET_NAME, file_name)
-        assert info_after is None
+    def test_file_delete_full_file_info_not_exists(self):
+        self.mock_ipc.storage.get_bucket_by_name.return_value = (b"id", "b")
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"fid", "f")
+        self.mock_ipc.storage.get_full_file_info.return_value = (None, 0, False)
+        with pytest.raises(SDKError, match="not found"):
+            self.ipc.file_delete(None, "bucket", "file.txt")
+
+    def test_file_delete_index_failure(self):
+        self.mock_ipc.storage.get_bucket_by_name.return_value = (b"id", "b")
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"fid", "f")
+        self.mock_ipc.storage.get_full_file_info.side_effect = Exception("rpc failure")
+        with pytest.raises(SDKError, match="failed to determine file index"):
+            self.ipc.file_delete(None, "bucket", "file.txt")
 
 
 # ===================================================================
@@ -274,62 +442,365 @@ class TestFileDelete:
 # ===================================================================
 
 
-class TestFilePublicAccess:
-    def test_set_public_access_empty_bucket(self, ipc):
+class TestFileSetPublicAccess:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc)
+
+    def test_empty_bucket(self):
         with pytest.raises(SDKError, match="empty bucket name"):
-            ipc.file_set_public_access(None, "", "file.txt", True)
+            self.ipc.file_set_public_access(None, "", "file.txt", True)
 
-    def test_set_public_access_empty_file(self, ipc):
+    def test_empty_file(self):
         with pytest.raises(SDKError, match="empty file name"):
-            ipc.file_set_public_access(None, "bucket", "", True)
+            self.ipc.file_set_public_access(None, "bucket", "", True)
+
+    def test_bucket_not_found(self):
+        self.mock_client.BucketView.return_value = None
+        with pytest.raises(SDKError):
+            self.ipc.file_set_public_access(None, "bucket", "file.txt", True)
+
+    def test_no_access_manager(self):
+        self.mock_client.BucketView.return_value = Mock(
+            id="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            created_at=Mock(seconds=1000),
+        )
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"file_id", "file.txt")
+        self.mock_ipc.access_manager = None
+
+        with pytest.raises(SDKError, match="access manager not available"):
+            self.ipc.file_set_public_access(None, "bucket", "file.txt", True)
+
+    def test_success(self):
+        self.mock_client.BucketView.return_value = Mock(
+            id="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            created_at=Mock(seconds=1000),
+        )
+        self.mock_ipc.storage.get_file_by_name.return_value = (b"file_id", "file.txt")
+        self.mock_ipc.access_manager.change_public_access.return_value = "0xtx"
+
+        assert self.ipc.file_set_public_access(None, "bucket", "file.txt", True) is None
+        self.mock_ipc.access_manager.change_public_access.assert_called_once()
 
 
 # ===================================================================
-# Erasure coding (standalone, no network needed)
+# Download flow
 # ===================================================================
 
 
-class TestErasureCoding:
-    def test_encode_decode_roundtrip(self):
-        from private.erasure_code.erasure_code import ErasureCode
+class TestCreateFileDownload:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
 
-        ec = ErasureCode(4, 2)
-        data = b"Erasure coding roundtrip test data for IPC"
+    def test_success(self):
+        c1 = Mock(cid="bafychunk1", encoded_size=2048, size=1024)
+        c2 = Mock(cid="bafychunk2", encoded_size=1024, size=512)
+        self.mock_client.FileDownloadCreate.return_value = Mock(bucket_name="b", chunks=[c1, c2])
 
-        encoded = ec.encode(data)
-        decoded = ec.extract_data(encoded, len(data))
+        result = self.ipc.create_file_download(None, "b", "f.bin")
+        assert isinstance(result, IPCFileDownload)
+        assert len(result.chunks) == 2
+        assert result.chunks[0].index == 0
+        assert result.chunks[1].index == 1
 
-        assert decoded == data
+    def test_empty_bucket(self):
+        with pytest.raises(SDKError, match="empty bucket name"):
+            self.ipc.create_file_download(None, "", "f")
 
-    def test_recover_missing_blocks(self):
-        from private.erasure_code.erasure_code import ErasureCode, split_into_blocks
+    def test_empty_file(self):
+        with pytest.raises(SDKError, match="empty file name"):
+            self.ipc.create_file_download(None, "b", "")
 
-        ec = ErasureCode(4, 2)
-        data = b"Recovery test with missing blocks"
+    def test_failure(self):
+        self.mock_client.FileDownloadCreate.side_effect = Exception("timeout")
+        with pytest.raises(SDKError, match="failed to create file download"):
+            self.ipc.create_file_download(None, "b", "f")
 
-        encoded = ec.encode(data)
-        shard_size = len(encoded) // 6
-        blocks = split_into_blocks(encoded, shard_size)
 
-        # Lose 2 blocks (within parity tolerance)
-        blocks[0] = None
-        blocks[3] = None
+class TestCreateRangeFileDownload:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
 
-        recovered = ec.extract_data_blocks(blocks, len(data))
-        assert recovered == data
+    def test_success(self):
+        c = Mock(cid="bafychunk", encoded_size=1024, size=512)
+        self.mock_client.FileDownloadRangeCreate.return_value = Mock(bucket_name="b", chunks=[c])
 
-    def test_invalid_init(self):
-        from private.erasure_code.erasure_code import ErasureCode
+        result = self.ipc.create_range_file_download(None, "b", "f", 2, 5)
+        assert result.chunks[0].index == 2
 
-        with pytest.raises(ValueError):
-            ErasureCode(0, 2)
-        with pytest.raises(ValueError):
-            ErasureCode(4, 0)
+    def test_empty_bucket(self):
+        with pytest.raises(SDKError, match="empty bucket name"):
+            self.ipc.create_range_file_download(None, "", "f", 0, 5)
+
+    def test_empty_file(self):
+        with pytest.raises(SDKError, match="empty file name"):
+            self.ipc.create_range_file_download(None, "b", "", 0, 5)
+
+
+class TestCreateChunkDownload:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
+
+    def test_success(self):
+        blk = Mock(cid="bafyblock", permit="p", node_address="node:5500", node_id="n")
+        self.mock_client.FileDownloadChunkCreate.return_value = Mock(blocks=[blk])
+
+        chunk = Chunk(cid="bafychunk", encoded_size=2048, size=1024, index=0)
+        result = self.ipc.create_chunk_download(None, "b", "f", chunk)
+
+        assert isinstance(result, FileChunkDownload)
+        assert len(result.blocks) == 1
+        assert isinstance(result.blocks[0], FileBlockDownload)
+
+    def test_failure(self):
+        self.mock_client.FileDownloadChunkCreate.side_effect = Exception("timeout")
+        chunk = Chunk(cid="c", encoded_size=1, size=1, index=0)
+        with pytest.raises(SDKError, match="failed to create chunk download"):
+            self.ipc.create_chunk_download(None, "b", "f", chunk)
+
+
+class TestDownloadChunkBlocks:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.ipc = _make_ipc(mock_client=self.mock_client)
+
+    @patch("sdk.dag.extract_block_data")
+    def test_success(self, mock_extract):
+        mock_extract.side_effect = [b"block0_data", b"block1_data"]
+
+        pool = Mock()
+        pool.create_ipc_client.return_value = (
+            Mock(FileDownloadBlock=Mock(return_value=[Mock(data=b"raw")])),
+            Mock(),
+            None,
+        )
+
+        block0 = FileBlockDownload(cid="b0", data=b"", permit="p", node_address="n:5500", node_id="n")
+        block1 = FileBlockDownload(cid="b1", data=b"", permit="p", node_address="n:5500", node_id="n")
+        chunk_dl = FileChunkDownload(cid="c", index=0, encoded_size=2048, size=1024, blocks=[block0, block1])
+
+        writer = io.BytesIO()
+        self.ipc.download_chunk_blocks(None, pool, "b", "f", "0xaddr", chunk_dl, b"", writer)
+
+        assert writer.getvalue() == b"block0_datablock1_data"
+
+    @patch("private.encryption.decrypt", return_value=b"decrypted")
+    @patch("sdk.dag.extract_block_data", return_value=b"encrypted")
+    def test_with_decryption(self, mock_extract, mock_decrypt):
+        pool = Mock()
+        pool.create_ipc_client.return_value = (
+            Mock(FileDownloadBlock=Mock(return_value=[Mock(data=b"raw")])),
+            Mock(),
+            None,
+        )
+
+        block = FileBlockDownload(cid="b", data=b"", permit="p", node_address="n:5500", node_id="n")
+        chunk_dl = FileChunkDownload(cid="c", index=0, encoded_size=100, size=50, blocks=[block])
+
+        writer = io.BytesIO()
+        self.ipc.download_chunk_blocks(None, pool, "b", "f", "0xaddr", chunk_dl, b"a" * 32, writer)
+        mock_decrypt.assert_called_once_with(b"a" * 32, b"encrypted", b"0")
+        assert writer.getvalue() == b"decrypted"
+
+
+class TestFetchBlockData:
+    def setup_method(self):
+        self.ipc = _make_ipc()
+
+    def test_success(self):
+        pool = Mock()
+        client = Mock()
+        client.FileDownloadBlock.return_value = [Mock(data=b"hello "), Mock(data=b"world")]
+        pool.create_ipc_client.return_value = (client, Mock(), None)
+
+        block = Mock(node_address="node:5500", cid="bafyblock")
+        result = self.ipc.fetch_block_data(None, pool, "c", "b", "f", "0x", 0, 0, block)
+        assert result == b"hello world"
+
+    def test_missing_metadata(self):
+        block = Mock(spec=[])
+        with pytest.raises(SDKError, match="missing block metadata"):
+            self.ipc.fetch_block_data(None, Mock(), "c", "b", "f", "0x", 0, 0, block)
+
+    def test_client_creation_failure(self):
+        pool = Mock()
+        pool.create_ipc_client.return_value = (None, None, Exception("conn failed"))
+        block = Mock(node_address="bad:5500", cid="b")
+        with pytest.raises(SDKError, match="failed to create client"):
+            self.ipc.fetch_block_data(None, pool, "c", "b", "f", "0x", 0, 0, block)
+
+    def test_empty_node_address(self):
+        block = Mock(node_address="", cid="b")
+        with pytest.raises(SDKError, match="missing block metadata"):
+            self.ipc.fetch_block_data(None, Mock(), "c", "b", "f", "0x", 0, 0, block)
+
+
+class TestDownload:
+    def setup_method(self):
+        self.ipc = _make_ipc()
+
+    @patch.object(IPC, "download_chunk_blocks")
+    @patch.object(IPC, "create_chunk_download")
+    def test_iterates_chunks(self, mock_create, mock_dl_blocks):
+        c1 = Chunk(cid="c1", encoded_size=100, size=50, index=0)
+        c2 = Chunk(cid="c2", encoded_size=100, size=50, index=1)
+        fd = IPCFileDownload(bucket_name="b", name="f", chunks=[c1, c2])
+
+        self.ipc.download(None, fd, io.BytesIO())
+        assert mock_create.call_count == 2
+        assert mock_dl_blocks.call_count == 2
+
+    @patch.object(IPC, "download_chunk_blocks")
+    @patch.object(IPC, "create_chunk_download")
+    def test_context_cancelled(self, mock_create, mock_dl_blocks):
+        ctx = Mock()
+        ctx.done.return_value = True
+        fd = IPCFileDownload(bucket_name="b", name="f", chunks=[Chunk(cid="c", encoded_size=1, size=1, index=0)])
+
+        with pytest.raises(SDKError, match="failed to download file"):
+            self.ipc.download(ctx, fd, io.BytesIO())
 
 
 # ===================================================================
-# SDKConfig defaults
+# Upload flow
 # ===================================================================
+
+
+class TestCreateFileUpload:
+    def setup_method(self):
+        self.mock_client = Mock()
+        self.mock_ipc = _make_ipc_instance()
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc)
+
+    def test_empty_bucket(self):
+        with pytest.raises(SDKError, match="empty bucket name"):
+            self.ipc.create_file_upload(None, "", "f")
+
+    def test_empty_file(self):
+        with pytest.raises(SDKError, match="empty file name"):
+            self.ipc.create_file_upload(None, "b", "")
+
+    def test_bucket_not_found(self):
+        self.mock_client.BucketView.return_value = None
+        with pytest.raises(SDKError, match="failed to create file upload"):
+            self.ipc.create_file_upload(None, "missing", "f")
+
+    def test_file_already_exists(self):
+        self.mock_client.BucketView.return_value = Mock(
+            id="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            created_at=Mock(seconds=1000),
+        )
+        self.mock_ipc.storage.create_file.side_effect = Exception("0x6891dde0 FileAlreadyExists")
+
+        with pytest.raises(SDKError, match="file already exists"):
+            self.ipc.create_file_upload(None, "b", "existing.txt")
+
+    def test_success(self):
+        self.mock_client.BucketView.return_value = Mock(
+            id="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            created_at=Mock(seconds=1000),
+        )
+        self.mock_ipc.storage.create_file.return_value = "0xtx"
+        del self.mock_ipc.wait_for_tx
+        del self.mock_ipc.web3
+
+        result = self.ipc.create_file_upload(None, "b", "new.txt")
+        assert isinstance(result, IPCFileUpload)
+        assert result.name == "new.txt"
+
+
+# ===================================================================
+# Encryption helpers
+# ===================================================================
+
+
+class TestEncryptionHelpers:
+    def test_encryption_key_empty_parent(self):
+        from sdk.sdk_ipc import encryption_key
+
+        assert encryption_key(b"", "b", "f") == b""
+
+    def test_encryption_key_with_parent(self):
+        from sdk.sdk_ipc import encryption_key
+
+        result = encryption_key(b"secret_parent_key_32bytes_long!!", "b", "f")
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
+    def test_maybe_encrypt_empty_key(self):
+        from sdk.sdk_ipc import maybe_encrypt_metadata
+
+        assert maybe_encrypt_metadata("my-file.txt", "b/f", b"") == "my-file.txt"
+
+    def test_maybe_encrypt_with_key(self):
+        from sdk.sdk_ipc import maybe_encrypt_metadata
+
+        result = maybe_encrypt_metadata("my-file.txt", "b/f", b"a" * 32)
+        assert result != "my-file.txt"
+        bytes.fromhex(result)
+
+
+# ===================================================================
+# Internal helpers
+# ===================================================================
+
+
+class TestConvertCidToBytes:
+    def setup_method(self):
+        self.ipc = _make_ipc()
+
+    def test_object_with_bytes(self):
+        class FakeCID:
+            def __bytes__(self):
+                return b"\x01\x02\x03"
+
+        assert self.ipc._convert_cid_to_bytes(FakeCID()) == b"\x01\x02\x03"
+
+
+class TestCalculateFileId:
+    def setup_method(self):
+        self.ipc = _make_ipc()
+
+    def test_deterministic(self):
+        bucket_id = b"\x00" * 32
+        assert self.ipc._calculate_file_id(bucket_id, "f.txt") == self.ipc._calculate_file_id(bucket_id, "f.txt")
+        assert len(self.ipc._calculate_file_id(bucket_id, "f.txt")) == 32
+
+    def test_different_inputs(self):
+        bucket_id = b"\x00" * 32
+        assert self.ipc._calculate_file_id(bucket_id, "a.txt") != self.ipc._calculate_file_id(bucket_id, "b.txt")
+
+
+# ===================================================================
+# IPC constructor & SDKConfig defaults
+# ===================================================================
+
+
+class TestIPCInit:
+    def test_default_config(self):
+        config = _make_config()
+        ipc = _make_ipc(config=config)
+        assert ipc.max_concurrency == 2
+        assert ipc.block_part_size == 1048576
+        assert ipc.use_connection_pool is True
+        assert ipc.encryption_key == b""
+
+    def test_config_with_encryption_key(self):
+        ipc = _make_ipc(config=_make_config(encryption_key=b"my_key"))
+        assert ipc.encryption_key == b"my_key"
+
+    def test_config_streaming_max_blocks(self):
+        ipc = _make_ipc(config=_make_config(streaming_max_blocks_in_chunk=64))
+        assert ipc.max_blocks_in_chunk == 64
+
+    def test_custom_retry(self):
+        mock_retry = Mock()
+        ipc = IPC(Mock(), Mock(), _make_ipc_instance(), _make_config(), with_retry=mock_retry)
+        assert ipc.with_retry is mock_retry
 
 
 class TestSDKConfigDefaults:
@@ -339,3 +810,38 @@ class TestSDKConfigDefaults:
         assert config.block_part_size == 1024 * 1024
         assert config.use_connection_pool is True
         assert config.erasure_code is None
+
+
+# ===================================================================
+# Erasure coding (standalone, no network)
+# ===================================================================
+
+
+class TestErasureCodingInIPC:
+    def test_encode_decode_roundtrip(self):
+        from private.erasure_code.erasure_code import ErasureCode
+
+        ec = ErasureCode(4, 2)
+        data = b"Erasure coding roundtrip test data for IPC"
+        encoded = ec.encode(data)
+        assert ec.extract_data(encoded, len(data)) == data
+
+    def test_recover_missing_blocks(self):
+        from private.erasure_code.erasure_code import ErasureCode, split_into_blocks
+
+        ec = ErasureCode(4, 2)
+        data = b"Recovery test with missing blocks"
+        encoded = ec.encode(data)
+        shard_size = len(encoded) // 6
+        blocks = split_into_blocks(encoded, shard_size)
+        blocks[0] = None
+        blocks[3] = None
+        assert ec.extract_data_blocks(blocks, len(data)) == data
+
+    def test_invalid_init(self):
+        from private.erasure_code.erasure_code import ErasureCode
+
+        with pytest.raises(ValueError):
+            ErasureCode(0, 2)
+        with pytest.raises(ValueError):
+            ErasureCode(4, 0)
