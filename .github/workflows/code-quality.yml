@@ -24,35 +24,19 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install black isort flake8 pylint mypy
+        pip install black isort flake8
 
     - name: Check code formatting with Black
       run: |
         black --check --diff akavesdk/ private/ sdk/ tests/
-      continue-on-error: true
 
     - name: Check import sorting with isort
       run: |
         isort --check-only --diff akavesdk/ private/ sdk/ tests/
-      continue-on-error: true
 
     - name: Lint with flake8
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        flake8 akavesdk/ private/ sdk/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings
-        flake8 akavesdk/ private/ sdk/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
-      continue-on-error: true
-
-    - name: Lint with pylint
-      run: |
-        pylint akavesdk/ private/ sdk/ --max-line-length=120 --disable=C0111,R0903,W0212,C0103 --exit-zero
-      continue-on-error: true
-
-    - name: Type check with mypy
-      run: |
-        mypy akavesdk/ private/ sdk/ --ignore-missing-imports --no-strict-optional
-      continue-on-error: true
+        flake8 akavesdk/ private/ sdk/ tests/ --count --max-complexity=10 --max-line-length=120 --show-source --statistics
 
   security:
     runs-on: ubuntu-latest
@@ -70,25 +54,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install safety bandit
+        pip install safety
 
     - name: Check for security vulnerabilities with Safety
       run: |
-        safety check --json || true
-      continue-on-error: true
-
-    - name: Security check with Bandit
-      run: |
-        bandit -r akavesdk/ private/ sdk/ -ll -f json -o bandit-report.json || true
-        bandit -r akavesdk/ private/ sdk/ -ll || true
-      continue-on-error: true
-
-    - name: Upload Bandit report
-      uses: actions/upload-artifact@v4
-      with:
-        name: bandit-security-report
-        path: bandit-report.json
-      if: always()
+        safety check --json
 
   dependencies:
     runs-on: ubuntu-latest
@@ -107,6 +77,4 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pip-audit
-        pip-audit --desc || true
-      continue-on-error: true
-
+        pip-audit --desc

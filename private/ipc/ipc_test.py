@@ -2,10 +2,12 @@
 # See LICENSE for copying information.
 
 import pytest
-from .ipc import generate_nonce, calculate_file_id, calculate_bucket_id, from_byte_array_cid
+
+from .ipc import calculate_bucket_id, calculate_file_id, from_byte_array_cid, generate_nonce
 
 try:
     from multiformats import CID
+
     MULTIFORMATS_AVAILABLE = True
 except ImportError:
     MULTIFORMATS_AVAILABLE = False
@@ -15,15 +17,15 @@ except ImportError:
 def test_generate_nonce():
     for i in range(10):
         nonce = generate_nonce()
-        
+
         if i > 0:
             print(f"retrying to sample nonce {i}")
-        
-        nonce_bytes = nonce.to_bytes((nonce.bit_length() + 7) // 8, byteorder='big')
+
+        nonce_bytes = nonce.to_bytes((nonce.bit_length() + 7) // 8, byteorder="big")
         if len(nonce_bytes) == 32:
             break
-    
-    nonce_bytes = nonce.to_bytes((nonce.bit_length() + 7) // 8, byteorder='big')
+
+    nonce_bytes = nonce.to_bytes((nonce.bit_length() + 7) // 8, byteorder="big")
     assert len(nonce_bytes) == 32
 
 
@@ -45,7 +47,7 @@ def test_calculate_file_id():
             "expected": bytes.fromhex("3eb92385cd986662e9885c47364fa5b2f154cd6fca8d99f4aed68160064991cb"),
         },
     ]
-    
+
     for tc in test_cases:
         file_id = calculate_file_id(tc["bucket_id"], tc["name"])
         assert file_id == tc["expected"]
@@ -69,7 +71,7 @@ def test_calculate_bucket_id():
             "expected": "8f92db9fde643ed88b4dc2e238e329bafdff4a172b34d0501c2f46a0d2c36696",
         },
     ]
-    
+
     for tc in test_cases:
         bucket_id = calculate_bucket_id(tc["bucket_name"], tc["address"])
         assert bucket_id.hex() == tc["expected"]
@@ -78,16 +80,17 @@ def test_calculate_bucket_id():
 def test_from_byte_array_cid():
     if not MULTIFORMATS_AVAILABLE:
         pytest.skip("multiformats library not available")
-    
+
     import secrets
+
     data = secrets.token_bytes(32)
-    
+
     reconstructed_cid = from_byte_array_cid(data)
     assert reconstructed_cid is not None
-    
+
     # Check that the CID is valid
     assert reconstructed_cid.version == 1
-    assert reconstructed_cid.codec.name == 'dag-pb'
+    assert reconstructed_cid.codec.name == "dag-pb"
 
 
 if __name__ == "__main__":

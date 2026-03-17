@@ -1,11 +1,11 @@
-import os
 import hashlib
-from typing import Tuple
+import os
+from typing import Tuple, cast
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
-from typing import Tuple, cast
 
 KEY_LENGTH = 32
 
@@ -41,20 +41,21 @@ def encrypt(key: bytes, data: bytes, info: bytes) -> bytes:
     cipher, nonce = make_gcm_cipher(key, info)
     encryptor = cipher.encryptor()
     ciphertext = encryptor.update(data) + encryptor.finalize()
-    tag = encryptor.tag # type: ignore[union-attr]
+    tag = encryptor.tag  # type: ignore[union-attr]
     encrypted_data = nonce + ciphertext + tag
     return cast(bytes, encrypted_data)
 
+
 def decrypt(key: bytes, encrypted_data: bytes, info: bytes) -> bytes:
-    nonce_size = 12  
-    tag_size = 16 
+    nonce_size = 12
+    tag_size = 16
     if len(encrypted_data) < nonce_size + tag_size:
         raise ValueError("Invalid encrypted data: insufficient length")
-    
+
     nonce = encrypted_data[:nonce_size]
     ciphertext = encrypted_data[nonce_size:-tag_size]
     tag = encrypted_data[-tag_size:]
-    
+
     derived_key = derive_key(key, info)
     cipher = Cipher(algorithms.AES(derived_key), modes.GCM(nonce, tag), backend=default_backend())
     decryptor = cipher.decryptor()
