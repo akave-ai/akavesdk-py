@@ -8,7 +8,6 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from hashlib import sha256
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -152,6 +151,7 @@ class IPC:
         self.chunk_buffer = config.chunk_buffer
         self.http_client = http_client
         self.batch_size = batch_size
+        self.erasure_code = config.erasure_code if hasattr(config, "erasure_code") else None
 
         from private.retry.retry import WithRetry
 
@@ -331,9 +331,17 @@ class IPC:
             if e.code() == grpc.StatusCode.NOT_FOUND:
                 logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
                 return None
+            error_details = str(e.details()).lower() if e.details() else ""
+            if "not found" in error_details or "not exist" in error_details:
+                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
+                return None
             logging.error(f"IPC file_info gRPC failed: {e.code()} - {e.details()}")
             raise SDKError(f"failed to get file info: {e.details()}")
         except Exception as err:
+            error_str = str(err).lower()
+            if "not found" in error_str or "not exist" in error_str:
+                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found.")
+                return None
             logging.error(f"IPC file_info unexpected error: {err}")
             raise SDKError(f"failed to get file info: {err}")
 
@@ -772,9 +780,7 @@ class IPC:
             from Crypto.Hash import keccak
 
             combined = bucket_id + file_name.encode()
-            hash_obj = keccak.new(digest_bits=256)
-            hash_obj.update(combined)
-            return hash_obj.digest()
+            return keccak.new(data=combined, digest_bits=256).digest()
         except ImportError:
             raise SDKError("Failed to import required modules for file ID calculation")
         except Exception as e:
@@ -1361,7 +1367,10 @@ class IPC:
                     except Exception as e:
                         raise SDKError(f"failed to download block: {str(e)}")
 
-            data = b"".join([b for b in blocks if b is not None])
+            if hasattr(self, "erasure_code") and self.erasure_code is not None:
+                data = self.erasure_code.extract_data_blocks(blocks, chunk_download.size)
+            else:
+                data = b"".join([b for b in blocks if b is not None])
 
             if file_encryption_key:
                 from private.encryption import decrypt
