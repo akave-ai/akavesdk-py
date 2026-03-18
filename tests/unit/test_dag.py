@@ -32,7 +32,6 @@ from sdk.dag import (
 )
 from sdk.model import FileBlockUpload
 
-
 # ---------------------------------------------------------------------------
 # Varint encoding / decoding
 # ---------------------------------------------------------------------------
@@ -577,7 +576,7 @@ class TestExtractUnixfsDataFallback:
         # Build inner UnixFS: field 4 length-delimited
         inner = bytes([0x08, 0x02, 0x22]) + _encode_varint(len(payload)) + payload
         # Wrap in DAG-PB: field 1 length-delimited
-        dagpb = bytes([0x0a]) + _encode_varint(len(inner)) + inner
+        dagpb = bytes([0x0A]) + _encode_varint(len(inner)) + inner
         result = _extract_unixfs_data_fallback(dagpb)
         assert result == payload
 
