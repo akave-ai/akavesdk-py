@@ -17,7 +17,6 @@ import pytest
 from sdk.config import SDKError
 from sdk.shared.grpc_base import GrpcClientBase
 
-
 # ---------------------------------------------------------------------------
 # Helper to create a mock gRPC error with .code() and .details()
 # ---------------------------------------------------------------------------
