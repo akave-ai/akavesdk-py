@@ -189,42 +189,6 @@ finally:
     print("Connection closed")
 ```
 
-### Streaming API Usage
-
-```python
-from akavesdk import SDK, SDKError
-
-config = SDKConfig(
-    address="connect.akave.ai:5500",
-    max_concurrency=10,
-    block_part_size=1 * 1024 * 1024,  # 1MB
-    use_connection_pool=True
-)
-
-# Initialize the SDK
-sdk = SDK(config)
-
-try:
-    # Get streaming API
-    streaming = sdk.streaming_api()
-    
-    # List files in a bucket
-    files = streaming.list_files({}, "my-bucket")
-    for file in files:
-        print(f"File: {file.name}, Size: {file.size} bytes")
-    
-    # Get file info
-    file_info = streaming.file_info({}, "my-bucket", "my-file.txt")
-    print(f"File info: {file_info}")
-except SDKError as e:
-    # handle sdk exception
-    pass
-except Exception as e:
-    # handle generic exception
-    pass
-finally:
-    sdk.close()
-```
 
 ## File Size Requirements
 
@@ -297,6 +261,46 @@ The Akave SDK for Python uses a set of Python dataclasses to represent the data 
 - **IPCFileChunkUploadV2**: Chunk metadata for IPC operations
 
 The model structure is designed to be intuitive to Python developers while maintaining compatibility with the Akave API. All serialization/deserialization between Python objects and gRPC messages is handled automatically by the SDK.
+
+## Contributing
+
+We welcome contributions! Before submitting a PR, please ensure your code passes all quality checks.
+
+### Code Quality Requirements
+
+Run these commands before pushing to ensure CI passes:
+
+```bash
+# Install code quality tools
+pip install black isort flake8
+
+# 1. Format code with Black
+black akavesdk/ private/ sdk/ tests/
+
+# 2. Sort imports with isort
+isort akavesdk/ private/ sdk/ tests/
+
+# 3. Check linting with flake8
+flake8 akavesdk/ private/ sdk/ tests/ --count --max-complexity=10 --max-line-length=120
+```
+
+### Running Tests
+
+```bash
+pytest tests/unit -v
+
+pytest tests/unit -v --cov=akavesdk --cov=private --cov=sdk
+```
+
+### Quick Pre-Push Checklist
+
+```bash
+# One-liner to format, sort, and check
+black akavesdk/ private/ sdk/ tests/ && \
+isort akavesdk/ private/ sdk/ tests/ && \
+flake8 akavesdk/ private/ sdk/ tests/ --max-complexity=10 --max-line-length=120 && \
+pytest tests/unit -v
+```
 
 ## License
 

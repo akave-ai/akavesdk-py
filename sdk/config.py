@@ -1,13 +1,12 @@
-from typing import Optional, List
-from private.memory.memory import Size
 from dataclasses import dataclass
-from .erasure_code import ErasureCode
+from typing import List, Optional
+
+from private.memory.memory import Size
 
 BLOCK_SIZE = 1 * Size.MB
 ENCRYPTION_OVERHEAD = 28  # 16 bytes for AES-GCM tag, 12 bytes for nonce
 MIN_BUCKET_NAME_LENGTH = 3
 MIN_FILE_SIZE = 127  # 127 bytes
-
 
 
 # Default CID version and codecs for IPFS
@@ -23,31 +22,38 @@ BlockSize = 1 << 20  # 1MiB blocks
 EncryptionOverhead = 16  # 16 bytes overhead from encryption
 
 
-
 ## [Base Config Class]
+
 
 class Config:
     """Configuration for the Ethereum storage contract client."""
-    def __init__(self, dial_uri: str, private_key: str, storage_contract_address: str, access_contract_address: Optional[str] = None, policy_factory_contract_address: Optional[str] = None):
+
+    def __init__(
+        self,
+        dial_uri: str,
+        private_key: str,
+        storage_contract_address: str,
+        access_contract_address: Optional[str] = None,
+    ):
         self.dial_uri = dial_uri
         self.private_key = private_key
         self.storage_contract_address = storage_contract_address
         self.access_contract_address = access_contract_address
-        self.policy_factory_contract_address = policy_factory_contract_address or ""
 
     @staticmethod
     def default():
-        return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="", policy_factory_contract_address="")
+        return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="")
 
 
 ## [SDK Error Class]
 
-class SDKError(Exception):
-    pass 
 
+class SDKError(Exception):
+    pass
 
 
 ## [Validation Functions]
+
 
 # Basic validation: expect hex string like '0x' + 8 hex chars (4 bytes) minimum
 def validate_hex_string(hex_string: str) -> bool:
@@ -61,16 +67,16 @@ def validate_hex_string(hex_string: str) -> bool:
 ## [Test Configurations]
 
 DEFAULT_CONFIG_TEST_STREAMING_CONN = {
-    'AKAVE_SDK_NODE': 'connect.akave.ai:5000',  
-    'ENCRYPTION_KEY': '',  
+    "AKAVE_SDK_NODE": "connect.akave.ai:5000",
+    "ENCRYPTION_KEY": "",
 }
 
 DEFAULT_CONFIG_TEST_SDK_CONN = {
-    'AKAVE_SDK_NODE': 'connect.akave.ai:5000',  # For streaming operations
-    'AKAVE_IPC_NODE': 'connect.akave.ai:5500',  # For IPC operations
-    'ETHEREUM_NODE_URL': 'https://n3-us.akave.ai/ext/bc/2JMWNmZbYvWcJRPPy1siaDBZaDGTDAaqXoY5UBKh4YrhNFzEce/rpc',
-    'STORAGE_CONTRACT_ADDRESS': '0x9Aa8ff1604280d66577ecB5051a3833a983Ca3aF',  # Will be obtained from node
-    'ACCESS_CONTRACT_ADDRESS': '',   # Will be obtained from node
+    "AKAVE_SDK_NODE": "connect.akave.ai:5000",  # For streaming operations
+    "AKAVE_IPC_NODE": "connect.akave.ai:5500",  # For IPC operations
+    "ETHEREUM_NODE_URL": "https://n3-us.akave.ai/ext/bc/2JMWNmZbYvWcJRPPy1siaDBZaDGTDAaqXoY5UBKh4YrhNFzEce/rpc",
+    "STORAGE_CONTRACT_ADDRESS": "0x9Aa8ff1604280d66577ecB5051a3833a983Ca3aF",  # Will be obtained from node
+    "ACCESS_CONTRACT_ADDRESS": "",  # Will be obtained from node
 }
 
 
@@ -89,6 +95,7 @@ KNOWN_ERROR_STRINGS: List[str] = [
     # Add all other known error strings here...
 ]
 
+
 @dataclass
 class SDKConfig:
     address: str
@@ -104,4 +111,3 @@ class SDKConfig:
     max_retries: Optional[int] = 3
     backoff_delay: Optional[int] = 1
     ipc_address: Optional[str] = None
-    erasure_code: Optional[ErasureCode] = None

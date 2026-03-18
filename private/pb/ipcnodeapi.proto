@@ -9,10 +9,8 @@ package ipcnodeapi;
 service IPCNodeAPI {
   rpc ConnectionParams (ConnectionParamsRequest) returns (ConnectionParamsResponse) {}
   // Bucket APIs.
-  rpc BucketCreate (IPCBucketCreateRequest) returns (IPCBucketCreateResponse) {}
   rpc BucketView (IPCBucketViewRequest) returns (IPCBucketViewResponse) {}
   rpc BucketList (IPCBucketListRequest) returns (IPCBucketListResponse) {}
-  rpc BucketDelete (IPCBucketDeleteRequest) returns (IPCBucketDeleteResponse) {}
   // File APIs.
   rpc FileUploadChunkCreate (IPCFileUploadChunkCreateRequest) returns (IPCFileUploadChunkCreateResponse) {}
   rpc FileUploadBlock (stream IPCFileBlockData) returns (IPCFileUploadBlockResponse) {}
@@ -22,10 +20,12 @@ service IPCNodeAPI {
   rpc FileDownloadChunkCreate (IPCFileDownloadChunkCreateRequest) returns (IPCFileDownloadChunkCreateResponse) {}
   rpc FileDownloadBlock (IPCFileDownloadBlockRequest) returns (stream IPCFileBlockData) {}
   rpc FileList (IPCFileListRequest) returns (IPCFileListResponse) {}
-  rpc FileListChunks (IPCFileListChunksRequest) returns (IPCFileListChunksResponse) {}
-  rpc FileDelete (IPCFileDeleteRequest) returns (IPCFileDeleteResponse) {}
-  
   rpc FileUploadBlockUnary (IPCFileBlockData) returns (IPCFileUploadBlockResponse) {}
+}
+
+// IPCArchivalAPI defines archival API extension.
+service IPCArchivalAPI {
+  rpc FileResolveBlock (IPCFileResolveBlockRequest) returns (IPCFileResolveBlockResponse);
 }
 
 message ConnectionParamsRequest {}
@@ -34,15 +34,6 @@ message ConnectionParamsResponse {
   string dial_uri = 1;
   string storage_address = 2;
   string access_address = 3;
-}
-
-message IPCBucketCreateRequest {
-  string name = 1;
-}
-
-message IPCBucketCreateResponse {
-  string name = 1;
-  google.protobuf.Timestamp created_at = 2;
 }
 
 message IPCBucketViewRequest {
@@ -70,10 +61,6 @@ message IPCBucketListResponse {
     google.protobuf.Timestamp created_at = 2;
   }
 }
-
-message IPCBucketDeleteRequest {}
-
-message IPCBucketDeleteResponse {}
 
 message IPCChunk {
   string cid = 1;
@@ -168,7 +155,8 @@ message IPCFileDownloadChunkCreateRequest {
   string bucket_name = 1;
   string file_name = 2;
   string chunk_cid = 3;
-  string address = 4;
+  int64 chunk_index = 4;
+  string address = 5;
 }
 
 message IPCFileDownloadChunkCreateResponse {
@@ -177,8 +165,8 @@ message IPCFileDownloadChunkCreateResponse {
   message BlockDownload {
     string cid = 1;
     int64 size = 2;
-    string node_address = 3;
-    string node_id = 4;
+    string node_id = 3;
+    string node_address = 4;
     string permit = 5;
   }
 }
@@ -212,20 +200,17 @@ message IPCFileListResponse {
   }
 }
 
-message IPCFileListChunksRequest {
-  string stream_id = 1;
+message IPCFileResolveBlockRequest {
+  string block_cid = 1;
 }
 
-message IPCFileListChunksResponse {
-  string stream_id = 1;
-  repeated string cids = 2;
+message IPCFileResolveBlockResponse {
+  message PDP {
+    string url = 1;
+    int64 offset = 2;
+    int64 size = 3;
+    uint64 data_set_id = 4;
+  }
+
+  PDP block = 1;
 }
-
-message IPCFileDeleteRequest{
-  bytes transaction = 1;
-  bytes bucket_name = 2;
-  string name = 3;
-}
-
-message IPCFileDeleteResponse{}
-
