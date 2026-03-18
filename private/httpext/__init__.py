@@ -1,6 +1,3 @@
-# HTTP-related utility functions for internal Akave SDK components.
+from .httpext import HTTPExtClient, RangeDownloadResult, HTTPExtError, RangeNotSatisfiableError
 
-
-from .httpext import range_download
-
-__all__ = ["range_download"]
+__all__ = ["HTTPExtClient", "RangeDownloadResult", "HTTPExtError", "RangeNotSatisfiableError"]
