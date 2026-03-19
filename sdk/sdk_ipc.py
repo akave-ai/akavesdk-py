@@ -8,7 +8,6 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from hashlib import sha256
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -772,9 +771,7 @@ class IPC:
             from Crypto.Hash import keccak
 
             combined = bucket_id + file_name.encode()
-            hash_obj = keccak.new(digest_bits=256)
-            hash_obj.update(combined)
-            return hash_obj.digest()
+            return keccak(combined)
         except ImportError:
             raise SDKError("Failed to import required modules for file ID calculation")
         except Exception as e:
@@ -1361,7 +1358,11 @@ class IPC:
                     except Exception as e:
                         raise SDKError(f"failed to download block: {str(e)}")
 
-            data = b"".join([b for b in blocks if b is not None])
+            if hasattr(self, "erasure_code") and self.erasure_code is not None:
+
+                data = self.erasure_code.extract_data_blocks(blocks, chunk_download.size)
+            else:
+                data = b"".join([b for b in blocks if b is not None])
 
             if file_encryption_key:
                 from private.encryption import decrypt
