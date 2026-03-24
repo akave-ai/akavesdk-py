@@ -152,6 +152,7 @@ class IPC:
         self.chunk_buffer = config.chunk_buffer
         self.http_client = http_client
         self.batch_size = batch_size
+        self.erasure_code = config.erasure_code
 
         from private.retry.retry import WithRetry
 
@@ -1361,7 +1362,10 @@ class IPC:
                     except Exception as e:
                         raise SDKError(f"failed to download block: {str(e)}")
 
-            data = b"".join([b for b in blocks if b is not None])
+            if self.erasure_code is not None:
+                data = self.erasure_code.extract_data(blocks, chunk_download.size)
+            else:
+                data = b"".join([b for b in blocks if b is not None])
 
             if file_encryption_key:
                 from private.encryption import decrypt

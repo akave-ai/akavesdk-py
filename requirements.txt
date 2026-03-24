@@ -30,8 +30,7 @@ PyYAML==6.0.1
 cryptography==36.0.0
 
 #erasure
-reedsolo
-numpy
+zfec
 
 # Testing dependencies
 pytest>=7.4.0

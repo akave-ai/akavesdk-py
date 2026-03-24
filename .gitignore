@@ -71,3 +71,5 @@ pytest*
 test.py 
 generate_protos.py
 examples/
+test_venv
+report.json

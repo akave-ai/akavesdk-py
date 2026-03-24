@@ -1,7 +1,12 @@
-from dataclasses import dataclass
-from typing import List, Optional
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, List, Optional
 
 from private.memory.memory import Size
+
+if TYPE_CHECKING:
+    from private.erasurecode import ErasureCode
 
 BLOCK_SIZE = 1 * Size.MB
 ENCRYPTION_OVERHEAD = 28  # 16 bytes for AES-GCM tag, 12 bytes for nonce
@@ -111,3 +116,4 @@ class SDKConfig:
     max_retries: Optional[int] = 3
     backoff_delay: Optional[int] = 1
     ipc_address: Optional[str] = None
+    erasure_code: Optional["ErasureCode"] = field(default=None, compare=False)
