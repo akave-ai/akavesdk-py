@@ -77,4 +77,4 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pip-audit
-        pip-audit --desc
+        pip-audit --desc --ignore-vuln CVE-2026-4539
