@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from private.erasure_code.erasure_code import ErasureCode
 from private.memory.memory import Size
 
 BLOCK_SIZE = 1 * Size.MB
@@ -35,13 +34,11 @@ class Config:
         private_key: str,
         storage_contract_address: str,
         access_contract_address: Optional[str] = None,
-        policy_factory_contract_address: Optional[str] = None,
     ):
         self.dial_uri = dial_uri
         self.private_key = private_key
         self.storage_contract_address = storage_contract_address
         self.access_contract_address = access_contract_address
-        self.policy_factory_contract_address = policy_factory_contract_address or ""
 
     @staticmethod
     def default():
@@ -50,7 +47,6 @@ class Config:
             private_key="",
             storage_contract_address="",
             access_contract_address="",
-            policy_factory_contract_address="",
         )
 
 
@@ -65,7 +61,7 @@ class SDKError(Exception):
 
 
 def validate_hex_string(hex_string: str) -> bool:
-    """Basic validation: expect hex string like '0x' + 8 hex chars (4 bytes) minimum"""
+    # Basic validation: expect hex string like '0x' + 8 hex chars (4 bytes) minimum
     if not hex_string.startswith("0x"):
         return False
     if len(hex_string) < 10:
@@ -76,21 +72,23 @@ def validate_hex_string(hex_string: str) -> bool:
 ## [Test Configurations]
 
 DEFAULT_CONFIG_TEST_STREAMING_CONN = {
-    "AKAVE_SDK_NODE": "connect.akave.ai:5000",
+    "AKAVE_SDK_NODE": "connect.akave.ai:5000",  # For streaming operations
     "ENCRYPTION_KEY": "",
 }
 
 DEFAULT_CONFIG_TEST_SDK_CONN = {
-    "AKAVE_SDK_NODE": "connect.akave.ai:5000",
-    "AKAVE_IPC_NODE": "connect.akave.ai:5500",
+    "AKAVE_SDK_NODE": "connect.akave.ai:5000",  # For streaming operations
+    "AKAVE_IPC_NODE": "connect.akave.ai:5500",  # For IPC operations
     "ETHEREUM_NODE_URL": "https://n3-us.akave.ai/ext/bc/2JMWNmZbYvWcJRPPy1siaDBZaDGTDAaqXoY5UBKh4YrhNFzEce/rpc",
-    "STORAGE_CONTRACT_ADDRESS": "0x9Aa8ff1604280d66577ecB5051a3833a983Ca3aF",
-    "ACCESS_CONTRACT_ADDRESS": "",
+    "STORAGE_CONTRACT_ADDRESS": "0x9Aa8ff1604280d66577ecB5051a3833a983Ca3aF",  # Will be obtained from node
+    "ACCESS_CONTRACT_ADDRESS": "",  # Will be obtained from node
 }
 
 
 ## [Known Error Strings]
 
+# List of known error strings from the smart contracts
+# Replace these with the actual error strings from your contracts
 
 KNOWN_ERROR_STRINGS: List[str] = [
     "Storage: bucket doesn't exist",
@@ -105,9 +103,9 @@ KNOWN_ERROR_STRINGS: List[str] = [
 @dataclass
 class SDKConfig:
     address: str
-    max_concurrency: int = 10
-    block_part_size: int = 1024 * 1024
-    use_connection_pool: bool = True
+    max_concurrency: int
+    block_part_size: int
+    use_connection_pool: bool
     parity_blocks_count: int = 0
     chunk_buffer: int = 10
     encryption_key: Optional[bytes] = None
@@ -117,4 +115,3 @@ class SDKConfig:
     max_retries: Optional[int] = 3
     backoff_delay: Optional[int] = 1
     ipc_address: Optional[str] = None
-    erasure_code: Optional[ErasureCode] = None
