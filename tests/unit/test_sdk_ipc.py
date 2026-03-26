@@ -34,9 +34,7 @@ def _make_ipc_instance():
     mock_ipc = Mock()
     mock_ipc.auth = Mock()
     mock_ipc.auth.address = "0x1234567890abcdef1234567890abcdef12345678"
-    mock_ipc.auth.key = (
-        "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-    )
+    mock_ipc.auth.key = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
     mock_ipc.storage = Mock()
     mock_ipc.eth = Mock()
     mock_ipc.eth.eth = Mock()
@@ -74,9 +72,7 @@ class TestCreateBucket:
         self.mock_client = Mock()
         self.mock_ipc = _make_ipc_instance()
         self.config = _make_config()
-        self.ipc = _make_ipc(
-            mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config
-        )
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config)
 
     def test_create_bucket_success(self):
         mock_receipt = Mock()
@@ -247,9 +243,7 @@ class TestDeleteBucket:
             self.ipc.delete_bucket(None, "")
 
     def test_delete_bucket_success(self):
-        self.mock_client.BucketView.return_value = Mock(
-            id="0xbucket_id_hex", name="my-bucket"
-        )
+        self.mock_client.BucketView.return_value = Mock(id="0xbucket_id_hex", name="my-bucket")
         self.mock_ipc.storage.delete_bucket.return_value = "0xtx"
 
         assert self.ipc.delete_bucket(None, "my-bucket") is None
@@ -404,12 +398,8 @@ class TestFileDelete:
     def setup_method(self):
         self.mock_client = Mock()
         self.mock_ipc = _make_ipc_instance()
-        self.config = _make_config(
-            max_concurrency=1, block_part_size=1024, use_connection_pool=False
-        )
-        self.ipc = _make_ipc(
-            mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config
-        )
+        self.config = _make_config(max_concurrency=1, block_part_size=1024, use_connection_pool=False)
+        self.ipc = _make_ipc(mock_client=self.mock_client, mock_ipc=self.mock_ipc, config=self.config)
 
     def test_file_delete_empty_bucket(self):
         with pytest.raises(SDKError, match="empty bucket or file name"):
@@ -522,9 +512,7 @@ class TestCreateFileDownload:
     def test_success(self):
         c1 = Mock(cid="bafychunk1", encoded_size=2048, size=1024)
         c2 = Mock(cid="bafychunk2", encoded_size=1024, size=512)
-        self.mock_client.FileDownloadCreate.return_value = Mock(
-            bucket_name="b", chunks=[c1, c2]
-        )
+        self.mock_client.FileDownloadCreate.return_value = Mock(bucket_name="b", chunks=[c1, c2])
 
         result = self.ipc.create_file_download(None, "b", "f.bin")
         assert isinstance(result, IPCFileDownload)
@@ -553,9 +541,7 @@ class TestCreateRangeFileDownload:
 
     def test_success(self):
         c = Mock(cid="bafychunk", encoded_size=1024, size=512)
-        self.mock_client.FileDownloadRangeCreate.return_value = Mock(
-            bucket_name="b", chunks=[c]
-        )
+        self.mock_client.FileDownloadRangeCreate.return_value = Mock(bucket_name="b", chunks=[c])
 
         result = self.ipc.create_range_file_download(None, "b", "f", 2, 5)
         assert result.chunks[0].index == 2
@@ -608,20 +594,12 @@ class TestDownloadChunkBlocks:
             None,
         )
 
-        block0 = FileBlockDownload(
-            cid="b0", data=b"", permit="p", node_address="n:5500", node_id="n"
-        )
-        block1 = FileBlockDownload(
-            cid="b1", data=b"", permit="p", node_address="n:5500", node_id="n"
-        )
-        chunk_dl = FileChunkDownload(
-            cid="c", index=0, encoded_size=2048, size=1024, blocks=[block0, block1]
-        )
+        block0 = FileBlockDownload(cid="b0", data=b"", permit="p", node_address="n:5500", node_id="n")
+        block1 = FileBlockDownload(cid="b1", data=b"", permit="p", node_address="n:5500", node_id="n")
+        chunk_dl = FileChunkDownload(cid="c", index=0, encoded_size=2048, size=1024, blocks=[block0, block1])
 
         writer = io.BytesIO()
-        self.ipc.download_chunk_blocks(
-            None, pool, "b", "f", "0xaddr", chunk_dl, b"", writer
-        )
+        self.ipc.download_chunk_blocks(None, pool, "b", "f", "0xaddr", chunk_dl, b"", writer)
 
         assert writer.getvalue() == b"block0_datablock1_data"
 
@@ -635,17 +613,11 @@ class TestDownloadChunkBlocks:
             None,
         )
 
-        block = FileBlockDownload(
-            cid="b", data=b"", permit="p", node_address="n:5500", node_id="n"
-        )
-        chunk_dl = FileChunkDownload(
-            cid="c", index=0, encoded_size=100, size=50, blocks=[block]
-        )
+        block = FileBlockDownload(cid="b", data=b"", permit="p", node_address="n:5500", node_id="n")
+        chunk_dl = FileChunkDownload(cid="c", index=0, encoded_size=100, size=50, blocks=[block])
 
         writer = io.BytesIO()
-        self.ipc.download_chunk_blocks(
-            None, pool, "b", "f", "0xaddr", chunk_dl, b"a" * 32, writer
-        )
+        self.ipc.download_chunk_blocks(None, pool, "b", "f", "0xaddr", chunk_dl, b"a" * 32, writer)
         mock_decrypt.assert_called_once_with(b"a" * 32, b"encrypted", b"0")
         assert writer.getvalue() == b"decrypted"
 
@@ -744,9 +716,7 @@ class TestCreateFileUpload:
             id="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
             created_at=Mock(seconds=1000),
         )
-        self.mock_ipc.storage.create_file.side_effect = Exception(
-            "0x6891dde0 FileAlreadyExists"
-        )
+        self.mock_ipc.storage.create_file.side_effect = Exception("0x6891dde0 FileAlreadyExists")
 
         with pytest.raises(SDKError, match="file already exists"):
             self.ipc.create_file_upload(None, "b", "existing.txt")
@@ -819,16 +789,12 @@ class TestCalculateFileId:
 
     def test_deterministic(self):
         bucket_id = b"\x00" * 32
-        assert self.ipc._calculate_file_id(
-            bucket_id, "f.txt"
-        ) == self.ipc._calculate_file_id(bucket_id, "f.txt")
+        assert self.ipc._calculate_file_id(bucket_id, "f.txt") == self.ipc._calculate_file_id(bucket_id, "f.txt")
         assert len(self.ipc._calculate_file_id(bucket_id, "f.txt")) == 32
 
     def test_different_inputs(self):
         bucket_id = b"\x00" * 32
-        assert self.ipc._calculate_file_id(
-            bucket_id, "a.txt"
-        ) != self.ipc._calculate_file_id(bucket_id, "b.txt")
+        assert self.ipc._calculate_file_id(bucket_id, "a.txt") != self.ipc._calculate_file_id(bucket_id, "b.txt")
 
 
 # ===================================================================
@@ -855,7 +821,5 @@ class TestIPCInit:
 
     def test_custom_retry(self):
         mock_retry = Mock()
-        ipc = IPC(
-            Mock(), Mock(), _make_ipc_instance(), _make_config(), with_retry=mock_retry
-        )
+        ipc = IPC(Mock(), Mock(), _make_ipc_instance(), _make_config(), with_retry=mock_retry)
         assert ipc.with_retry is mock_retry
