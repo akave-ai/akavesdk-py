@@ -14,7 +14,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from .config import BLOCK_SIZE, ENCRYPTION_OVERHEAD, MIN_BUCKET_NAME_LENGTH, SDKConfig, SDKError
+from .config import (
+    BLOCK_SIZE,
+    ENCRYPTION_OVERHEAD,
+    MIN_BUCKET_NAME_LENGTH,
+    SDKConfig,
+    SDKError,
+)
 from .connection import ConnectionPool
 from .dag import DAGRoot, build_dag, extract_block_data
 from .model import (
@@ -140,7 +146,16 @@ def to_ipc_proto_chunk(chunk_cid, index: int, size: int, blocks):
 
 
 class IPC:
-    def __init__(self, client, conn, ipc_instance, config: SDKConfig, http_client=None, batch_size=1, with_retry=None):
+    def __init__(
+        self,
+        client,
+        conn,
+        ipc_instance,
+        config: SDKConfig,
+        http_client=None,
+        batch_size=1,
+        with_retry=None,
+    ):
         self.client = client
         self.conn = conn
         self.ipc = ipc_instance
@@ -307,7 +322,9 @@ class IPC:
 
         try:
             request = ipcnodeapi_pb2.IPCFileViewRequest(
-                file_name=file_name, bucket_name=bucket_name, address=self.ipc.auth.address.lower()
+                file_name=file_name,
+                bucket_name=bucket_name,
+                address=self.ipc.auth.address.lower(),
             )
             response = self.client.FileView(request)
 
@@ -332,9 +349,17 @@ class IPC:
             if e.code() == grpc.StatusCode.NOT_FOUND:
                 logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
                 return None
+            error_details = str(e.details()).lower() if e.details() else ""
+            if "not found" in error_details or "not exist" in error_details:
+                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
+                return None
             logging.error(f"IPC file_info gRPC failed: {e.code()} - {e.details()}")
             raise SDKError(f"failed to get file info: {e.details()}")
         except Exception as err:
+            error_str = str(err).lower()
+            if "not found" in error_str or "not exist" in error_str:
+                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found.")
+                return None
             logging.error(f"IPC file_info unexpected error: {err}")
             raise SDKError(f"failed to get file info: {err}")
 
@@ -431,7 +456,10 @@ class IPC:
                 # Use get_full_file_info which returns (File struct, index, exists)
                 # This is more robust than get_file_index_by_id on the live network
                 full_info = self.ipc.storage.get_full_file_info(
-                    encrypted_bucket_name, encrypted_file_name, bucket_id, self.ipc.auth.address
+                    encrypted_bucket_name,
+                    encrypted_file_name,
+                    bucket_id,
+                    self.ipc.auth.address,
                 )
                 if not full_info[2]:
                     raise SDKError(f"file '{file_name}' not found in bucket '{bucket_name}'")
@@ -496,7 +524,11 @@ class IPC:
             for attempt in range(max_retries):
                 try:
                     tx_hash = self.ipc.storage.create_file(
-                        self.ipc.auth.address, self.ipc.auth.key, bucket_id, encrypted_file_name, nonce_manager=None
+                        self.ipc.auth.address,
+                        self.ipc.auth.key,
+                        bucket_id,
+                        encrypted_file_name,
+                        nonce_manager=None,
                     )
                     break
                 except Exception as e:
@@ -517,7 +549,11 @@ class IPC:
 
                     is_retryable = any(
                         retry_phrase in error_msg
-                        for retry_phrase in ["nonce too low", "replacement transaction underpriced", "eof"]
+                        for retry_phrase in [
+                            "nonce too low",
+                            "replacement transaction underpriced",
+                            "eof",
+                        ]
                     )
                     if is_retryable and attempt < max_retries - 1:
                         time.sleep(0.5 * (2**attempt))  # Exponential backoff
@@ -548,7 +584,9 @@ class IPC:
             is_continuation = file_upload.state.chunk_count > 0
 
             encrypted_file_name = maybe_encrypt_metadata(
-                file_upload.name, file_upload.bucket_name + "/" + file_upload.name, self.encryption_key
+                file_upload.name,
+                file_upload.bucket_name + "/" + file_upload.name,
+                self.encryption_key,
             )
             encrypted_bucket_name = maybe_encrypt_metadata(
                 file_upload.bucket_name, file_upload.name, self.encryption_key
@@ -644,11 +682,19 @@ class IPC:
                     break
 
                 chunk_upload = self.create_chunk_upload(
-                    ctx, chunk_index, file_enc_key, chunk_data[:bytes_read], bucket_id, encrypted_file_name
+                    ctx,
+                    chunk_index,
+                    file_enc_key,
+                    chunk_data[:bytes_read],
+                    bucket_id,
+                    encrypted_file_name,
                 )
 
                 cids, sizes, proto_chunk, error = to_ipc_proto_chunk(
-                    chunk_upload.chunk_cid, chunk_upload.index, chunk_upload.actual_size, chunk_upload.blocks
+                    chunk_upload.chunk_cid,
+                    chunk_upload.index,
+                    chunk_upload.actual_size,
+                    chunk_upload.blocks,
                 )
                 if error:
                     raise error
@@ -674,7 +720,11 @@ class IPC:
                         error_msg = str(e).lower()
                         is_retryable = any(
                             retry_phrase in error_msg
-                            for retry_phrase in ["nonce too low", "replacement transaction underpriced", "eof"]
+                            for retry_phrase in [
+                                "nonce too low",
+                                "replacement transaction underpriced",
+                                "eof",
+                            ]
                         )
                         if is_retryable and attempt < max_retries - 1:
                             time.sleep(0.5 * (2**attempt))
@@ -805,7 +855,13 @@ class IPC:
             raise SDKError(f"Failed to convert CID to binary format: {e}")
 
     def create_chunk_upload(
-        self, ctx, index: int, file_encryption_key: bytes, data: bytes, bucket_id: bytes, file_name: str
+        self,
+        ctx,
+        index: int,
+        file_encryption_key: bytes,
+        data: bytes,
+        bucket_id: bytes,
+        file_name: str,
     ) -> IPCFileChunkUploadV2:
         try:
             if len(file_encryption_key) > 0:
@@ -829,7 +885,9 @@ class IPC:
                 raise SDKError("to_ipc_proto_chunk returned None proto_chunk")
 
             request = ipcnodeapi_pb2.IPCFileUploadChunkCreateRequest(
-                chunk=proto_chunk, bucket_id=bucket_id, file_name=file_name  # bytes
+                chunk=proto_chunk,
+                bucket_id=bucket_id,
+                file_name=file_name,  # bytes
             )
 
             response = self.client.FileUploadChunkCreate(request)
@@ -872,7 +930,10 @@ class IPC:
                 chunk_cid_str = str(file_chunk_upload.chunk_cid)
 
             cids, sizes, proto_chunk, err = to_ipc_proto_chunk(
-                chunk_cid_str, file_chunk_upload.index, file_chunk_upload.actual_size, file_chunk_upload.blocks
+                chunk_cid_str,
+                file_chunk_upload.index,
+                file_chunk_upload.actual_size,
+                file_chunk_upload.blocks,
             )
             if err:
                 raise err
@@ -906,7 +967,14 @@ class IPC:
             raise SDKError(f"failed to upload chunk: {str(err)}")
 
     def _upload_block(
-        self, ctx, pool: ConnectionPool, block_index: int, block, proto_chunk, bucket_id, file_name: str
+        self,
+        ctx,
+        pool: ConnectionPool,
+        block_index: int,
+        block,
+        proto_chunk,
+        bucket_id,
+        file_name: str,
     ) -> None:
         try:
             node_address = block.node_address if hasattr(block, "node_address") else block["node_address"]
@@ -953,7 +1021,14 @@ class IPC:
                         full_node_id = node_id.encode() if isinstance(node_id, str) else node_id
 
                     signature_hex, _ = self._create_storage_signature(
-                        proto_chunk.cid, block_cid, proto_chunk.index, block_index, node_id, nonce, deadline, bucket_id
+                        proto_chunk.cid,
+                        block_cid,
+                        proto_chunk.index,
+                        block_index,
+                        node_id,
+                        nonce,
+                        deadline,
+                        bucket_id,
                     )
 
                     data_len = len(block_data_bytes)
@@ -1052,7 +1127,12 @@ class IPC:
             chain_id = self.ipc.storage.get_chain_id()
             contract_address = self.ipc.storage.contract_address
 
-            domain = Domain(name="Storage", version="1", chain_id=chain_id, verifying_contract=contract_address)
+            domain = Domain(
+                name="Storage",
+                version="1",
+                chain_id=chain_id,
+                verifying_contract=contract_address,
+            )
 
             data_types = {
                 "StorageData": [
@@ -1165,14 +1245,23 @@ class IPC:
             bucket_name = maybe_encrypt_metadata(bucket_name, bucket_name, self.encryption_key)
 
             request = ipcnodeapi_pb2.IPCFileDownloadCreateRequest(
-                bucket_name=bucket_name, file_name=file_name, address=self.ipc.auth.address
+                bucket_name=bucket_name,
+                file_name=file_name,
+                address=self.ipc.auth.address,
             )
 
             response = self.client.FileDownloadCreate(request)
 
             chunks = []
             for i, chunk in enumerate(response.chunks):
-                chunks.append(Chunk(cid=chunk.cid, encoded_size=chunk.encoded_size, size=chunk.size, index=i))
+                chunks.append(
+                    Chunk(
+                        cid=chunk.cid,
+                        encoded_size=chunk.encoded_size,
+                        size=chunk.size,
+                        index=i,
+                    )
+                )
 
             return IPCFileDownload(bucket_name=response.bucket_name, name=file_name, chunks=chunks)
         except Exception as err:
@@ -1201,7 +1290,14 @@ class IPC:
 
             chunks = []
             for i, chunk in enumerate(response.chunks):
-                chunks.append(Chunk(cid=chunk.cid, encoded_size=chunk.encoded_size, size=chunk.size, index=i + start))
+                chunks.append(
+                    Chunk(
+                        cid=chunk.cid,
+                        encoded_size=chunk.encoded_size,
+                        size=chunk.size,
+                        index=i + start,
+                    )
+                )
 
             return IPCFileDownload(bucket_name=response.bucket_name, name=file_name, chunks=chunks)
         except Exception as err:
@@ -1241,7 +1337,9 @@ class IPC:
 
             try:
                 tx_hash = self.ipc.access_manager.change_public_access(
-                    self.ipc.auth, file[0], is_public  # auth object  # file ID  # is_public flag
+                    self.ipc.auth,
+                    file[0],
+                    is_public,  # auth object  # file ID  # is_public flag
                 )
 
                 if hasattr(self.ipc, "wait_for_tx"):
@@ -1297,7 +1395,10 @@ class IPC:
     def create_chunk_download(self, ctx, bucket_name: str, file_name: str, chunk):
         try:
             request = ipcnodeapi_pb2.IPCFileDownloadChunkCreateRequest(
-                bucket_name=bucket_name, file_name=file_name, chunk_cid=chunk.cid, address=self.ipc.auth.address
+                bucket_name=bucket_name,
+                file_name=file_name,
+                chunk_cid=chunk.cid,
+                address=self.ipc.auth.address,
             )
 
             response = self.client.FileDownloadChunkCreate(request)
@@ -1315,7 +1416,11 @@ class IPC:
                 )
 
             return FileChunkDownload(
-                cid=chunk.cid, index=chunk.index, encoded_size=chunk.encoded_size, size=chunk.size, blocks=blocks
+                cid=chunk.cid,
+                index=chunk.index,
+                encoded_size=chunk.encoded_size,
+                size=chunk.size,
+                blocks=blocks,
             )
         except Exception as err:
             raise SDKError(f"failed to create chunk download: {str(err)}")
