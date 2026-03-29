@@ -8,6 +8,7 @@ import secrets
 import threading
 import time
 from datetime import datetime
+from hashlib import sha256
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -74,7 +75,9 @@ def encryption_key(parent_key: bytes, *info_data: str):
     return derive_key(parent_key, info.encode())
 
 
-def maybe_encrypt_metadata(value: str, derivation_path: str, encryption_key: bytes) -> str:
+def maybe_encrypt_metadata(
+    value: str, derivation_path: str, encryption_key: bytes
+) -> str:
     if len(encryption_key) == 0:
         return value
 
@@ -107,7 +110,9 @@ def to_ipc_proto_chunk(chunk_cid, index: int, size: int, blocks):
         else:
             block_cid_str = block_cid
 
-        pb_block = ipcnodeapi_pb2.IPCChunk.Block(cid=block_cid_str, size=len(block_data))
+        pb_block = ipcnodeapi_pb2.IPCChunk.Block(
+            cid=block_cid_str, size=len(block_data)
+        )
         pb_blocks.append(pb_block)
 
         try:
@@ -118,7 +123,9 @@ def to_ipc_proto_chunk(chunk_cid, index: int, size: int, blocks):
                     c = CID.decode(block_cid_str)
                     cid_bytes = bytes(c)
             except Exception as e:
-                raise SDKError(f"failed to get CID bytes for block {block_cid_str}: {str(e)}")
+                raise SDKError(
+                    f"failed to get CID bytes for block {block_cid_str}: {str(e)}"
+                )
 
             bcid = bytearray(32)
 
@@ -139,7 +146,9 @@ def to_ipc_proto_chunk(chunk_cid, index: int, size: int, blocks):
         except Exception as e:
             return None, None, None, SDKError(f"failed to process CID: {str(e)}")
 
-    proto_chunk = ipcnodeapi_pb2.IPCChunk(cid=chunk_cid_str, index=index, size=size, blocks=pb_blocks)
+    proto_chunk = ipcnodeapi_pb2.IPCChunk(
+        cid=chunk_cid_str, index=index, size=size, blocks=pb_blocks
+    )
 
     return cids, sizes, proto_chunk, None
 
@@ -166,10 +175,15 @@ class IPC:
         self.chunk_buffer = config.chunk_buffer
         self.http_client = http_client
         self.batch_size = batch_size
+        self.erasure_code = config.erasure_code
 
         from private.retry.retry import WithRetry
 
-        self.with_retry = with_retry if with_retry is not None else WithRetry(max_attempts=5, base_delay=0.1)
+        self.with_retry = (
+            with_retry
+            if with_retry is not None
+            else WithRetry(max_attempts=5, base_delay=0.1)
+        )
 
     def create_bucket(self, ctx, name: str) -> IPCBucketCreateResult:
         if len(name) < MIN_BUCKET_NAME_LENGTH:
@@ -191,7 +205,9 @@ class IPC:
             block = self.ipc.eth.eth.get_block(receipt.blockNumber)
             created_at = block.timestamp
 
-            bucket_id = receipt.transactionHash.hex() if receipt.transactionHash else "unknown"
+            bucket_id = (
+                receipt.transactionHash.hex() if receipt.transactionHash else "unknown"
+            )
 
             return IPCBucketCreateResult(id=bucket_id, name=name, created_at=created_at)
 
@@ -203,7 +219,9 @@ class IPC:
         if not bucket_name:
             raise SDKError("empty bucket name")
         try:
-            request = ipcnodeapi_pb2.IPCBucketViewRequest(name=bucket_name, address=self.ipc.auth.address.lower())
+            request = ipcnodeapi_pb2.IPCBucketViewRequest(
+                name=bucket_name, address=self.ipc.auth.address.lower()
+            )
             response = self.client.BucketView(request)
 
             if not response:
@@ -249,14 +267,18 @@ class IPC:
 
             buckets = []
             if response and hasattr(response, "buckets"):
-                logging.info(f"Received BucketList response with {len(response.buckets)} buckets")
+                logging.info(
+                    f"Received BucketList response with {len(response.buckets)} buckets"
+                )
                 for bucket in response.buckets:
                     created_at = 0
                     if hasattr(bucket, "created_at") and bucket.created_at:
                         created_at = int(bucket.created_at.seconds)
 
                     bucket_name = bucket.name if hasattr(bucket, "name") else ""
-                    buckets.append(IPCBucket(name=bucket_name, created_at=created_at, id=""))
+                    buckets.append(
+                        IPCBucket(name=bucket_name, created_at=created_at, id="")
+                    )
             else:
                 logging.info("BucketList response is empty or has no 'buckets' field")
 
@@ -272,7 +294,9 @@ class IPC:
         if not name:
             raise SDKError("empty bucket name")
         try:
-            request = ipcnodeapi_pb2.IPCBucketViewRequest(name=name, address=self.ipc.auth.address.lower())
+            request = ipcnodeapi_pb2.IPCBucketViewRequest(
+                name=name, address=self.ipc.auth.address.lower()
+            )
             try:
                 response = self.client.BucketView(request)
                 if not response:
@@ -282,11 +306,15 @@ class IPC:
                 if e.code() == grpc.StatusCode.NOT_FOUND:
                     logging.warning(f"Bucket '{name}' not found, cannot delete")
                     raise SDKError(f"bucket '{name}' not found")
-                logging.error(f"IPC bucket view failed during delete: {e.code()} - {e.details()}")
+                logging.error(
+                    f"IPC bucket view failed during delete: {e.code()} - {e.details()}"
+                )
                 raise SDKError(f"failed to check bucket existence: {e.details()}")
 
             # If we get here, bucket exists - proceed with deletion
-            bucket_id_hex = response.id if hasattr(response, "id") and response.id else None
+            bucket_id_hex = (
+                response.id if hasattr(response, "id") and response.id else None
+            )
             if not bucket_id_hex:
                 logging.error(f"No bucket ID returned from IPC for bucket '{name}'")
                 raise SDKError(f"bucket ID not available from IPC response")
@@ -300,11 +328,15 @@ class IPC:
                     private_key=self.ipc.auth.key,
                     bucket_id_hex=bucket_id_hex,  # bucket ID from IPC response
                 )
-                logging.info(f"IPC delete_bucket transaction sent for '{name}', tx_hash: {tx_hash}")
+                logging.info(
+                    f"IPC delete_bucket transaction sent for '{name}', tx_hash: {tx_hash}"
+                )
                 return None
 
             except Exception as e:
-                logging.error(f"Failed to delete bucket '{name}' on blockchain: {str(e)}")
+                logging.error(
+                    f"Failed to delete bucket '{name}' on blockchain: {str(e)}"
+                )
                 raise SDKError(f"blockchain transaction failed: {str(e)}")
 
         except Exception as err:
@@ -336,20 +368,34 @@ class IPC:
 
             return IPCFileMeta(
                 root_cid=response.root_cid if hasattr(response, "root_cid") else "",
-                name=response.file_name if hasattr(response, "file_name") else file_name,
-                bucket_name=response.bucket_name if hasattr(response, "bucket_name") else bucket_name,
-                encoded_size=response.encoded_size if hasattr(response, "encoded_size") else 0,
-                actual_size=response.actual_size if hasattr(response, "actual_size") else 0,
-                is_public=response.is_public if hasattr(response, "is_public") else False,
+                name=response.file_name
+                if hasattr(response, "file_name")
+                else file_name,
+                bucket_name=response.bucket_name
+                if hasattr(response, "bucket_name")
+                else bucket_name,
+                encoded_size=response.encoded_size
+                if hasattr(response, "encoded_size")
+                else 0,
+                actual_size=response.actual_size
+                if hasattr(response, "actual_size")
+                else 0,
+                is_public=response.is_public
+                if hasattr(response, "is_public")
+                else False,
                 created_at=created_at,
             )
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
-                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
+                logging.info(
+                    f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC."
+                )
                 return None
             error_details = str(e.details()).lower() if e.details() else ""
             if "not found" in error_details or "not exist" in error_details:
-                logging.info(f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC.")
+                logging.info(
+                    f"File '{file_name}' in bucket '{bucket_name}' not found via gRPC."
+                )
                 return None
             logging.error(f"IPC file_info gRPC failed: {e.code()} - {e.details()}")
             raise SDKError(f"failed to get file info: {e.details()}")
@@ -376,16 +422,28 @@ class IPC:
 
             files = []
             if response and hasattr(response, "list"):
-                logging.info(f"Received FileList response with {len(response.list)} files")
+                logging.info(
+                    f"Received FileList response with {len(response.list)} files"
+                )
                 for file_item in response.list:
                     created_at = 0
                     if hasattr(file_item, "created_at") and file_item.created_at:
                         created_at = int(file_item.created_at.seconds)
 
                     file_name = file_item.name if hasattr(file_item, "name") else ""
-                    root_cid = file_item.root_cid if hasattr(file_item, "root_cid") else ""
-                    encoded_size = file_item.encoded_size if hasattr(file_item, "encoded_size") else 0
-                    actual_size = file_item.actual_size if hasattr(file_item, "actual_size") else 0
+                    root_cid = (
+                        file_item.root_cid if hasattr(file_item, "root_cid") else ""
+                    )
+                    encoded_size = (
+                        file_item.encoded_size
+                        if hasattr(file_item, "encoded_size")
+                        else 0
+                    )
+                    actual_size = (
+                        file_item.actual_size
+                        if hasattr(file_item, "actual_size")
+                        else 0
+                    )
 
                     logging.info(
                         f"Processing file: name={file_name}, root_cid={root_cid}, encoded_size={encoded_size}, actual_size={actual_size}, created_at={created_at}"
@@ -417,7 +475,9 @@ class IPC:
         This implementation matches the Go SDK's IPC FileDelete method.
         """
         if not bucket_name.strip() or not file_name.strip():
-            raise SDKError(f"empty bucket or file name. Bucket: '{bucket_name}', File: '{file_name}'")
+            raise SDKError(
+                f"empty bucket or file name. Bucket: '{bucket_name}', File: '{file_name}'"
+            )
 
         try:
             # Note: Metadata encryption would be applied here if implemented
@@ -460,14 +520,18 @@ class IPC:
                     self.ipc.auth.address,
                 )
                 if not full_info[2]:
-                    raise SDKError(f"file '{file_name}' not found in bucket '{bucket_name}'")
+                    raise SDKError(
+                        f"file '{file_name}' not found in bucket '{bucket_name}'"
+                    )
                 file_index = full_info[1]
                 logging.info(f"Got file index from contract: {file_index}")
             except SDKError:
                 raise
             except Exception as index_err:
                 logging.error(f"Failed to get file index from contract: {index_err}")
-                raise SDKError(f"failed to determine file index from contract: {index_err}")
+                raise SDKError(
+                    f"failed to determine file index from contract: {index_err}"
+                )
 
             # Validate that we got a valid index
             if file_index is None or (isinstance(file_index, int) and file_index < 0):
@@ -479,7 +543,9 @@ class IPC:
                 f"Deleting file with file_id: {file_id.hex() if isinstance(file_id, bytes) else file_id}, bucket_id: {bucket_id.hex() if isinstance(bucket_id, bytes) else bucket_id}, name: {encrypted_file_name}, index: {file_index}"
             )
 
-            tx_hash = self.ipc.storage.delete_file(self.ipc.auth, file_id, bucket_id, encrypted_file_name, file_index)
+            tx_hash = self.ipc.storage.delete_file(
+                self.ipc.auth, file_id, bucket_id, encrypted_file_name, file_index
+            )
 
             # Go SDK waits for transaction: return errSDK.Wrap(sdk.ipc.WaitForTx(ctx, tx.Hash()))
             # Python SDK doesn't have WaitForTx implemented yet, so we just return
@@ -495,7 +561,9 @@ class IPC:
             logging.error(f"IPC file_delete failed: {err}")
             raise SDKError(f"failed to delete file: {err}")
 
-    def create_file_upload(self, ctx, bucket_name: str, file_name: str) -> IPCFileUpload:
+    def create_file_upload(
+        self, ctx, bucket_name: str, file_name: str
+    ) -> IPCFileUpload:
         if not bucket_name:
             raise SDKError("empty bucket name")
 
@@ -503,8 +571,12 @@ class IPC:
             raise SDKError("empty file name")
 
         try:
-            encrypted_file_name = maybe_encrypt_metadata(file_name, bucket_name + "/" + file_name, self.encryption_key)
-            encrypted_bucket_name = maybe_encrypt_metadata(bucket_name, file_name, self.encryption_key)
+            encrypted_file_name = maybe_encrypt_metadata(
+                file_name, bucket_name + "/" + file_name, self.encryption_key
+            )
+            encrypted_bucket_name = maybe_encrypt_metadata(
+                bucket_name, file_name, self.encryption_key
+            )
 
             file_upload = new_ipc_file_upload(bucket_name, file_name)
 
@@ -533,7 +605,9 @@ class IPC:
                     error_msg = str(e).lower()
 
                     if "0x6891dde0" in error_msg or "filealreadyexists" in error_msg:
-                        logging.info(f"File '{file_name}' already exists in bucket '{bucket_name}'")
+                        logging.info(
+                            f"File '{file_name}' already exists in bucket '{bucket_name}'"
+                        )
                         raise SDKError(f"file already exists")
 
                     if "transaction reverted" in error_msg:
@@ -561,7 +635,11 @@ class IPC:
 
             if hasattr(self.ipc, "wait_for_tx") and tx_hash:
                 self.ipc.wait_for_tx(tx_hash)
-            elif hasattr(self.ipc, "web3") and hasattr(self.ipc.eth.eth, "wait_for_transaction_receipt") and tx_hash:
+            elif (
+                hasattr(self.ipc, "web3")
+                and hasattr(self.ipc.eth.eth, "wait_for_transaction_receipt")
+                and tx_hash
+            ):
                 receipt = self.ipc.eth.eth.wait_for_transaction_receipt(tx_hash)
                 if receipt.status != 1:
                     raise SDKError("CreateFile transaction failed")
@@ -575,7 +653,9 @@ class IPC:
             logging.error(f"IPC create_file_upload failed: {err}")
             raise SDKError(f"failed to create file upload: {err}")
 
-    def upload(self, ctx, bucket_name: str, file_name: str, reader: io.IOBase) -> IPCFileMetaV2:
+    def upload(
+        self, ctx, bucket_name: str, file_name: str, reader: io.IOBase
+    ) -> IPCFileMetaV2:
         try:
             file_upload = self.create_file_upload(ctx, bucket_name, file_name)
 
@@ -616,7 +696,9 @@ class IPC:
             bucket_id = bucket[0]
 
             chunk_enc_overhead = 0
-            file_enc_key = encryption_key(self.encryption_key, encrypted_bucket_name, encrypted_file_name)
+            file_enc_key = encryption_key(
+                self.encryption_key, encrypted_bucket_name, encrypted_file_name
+            )
             if len(file_enc_key) > 0:
                 chunk_enc_overhead = EncryptionOverhead
 
@@ -775,9 +857,15 @@ class IPC:
             root_cid_bytes = self._convert_cid_to_bytes(root_cid)
             bucket_info = self.view_bucket(None, encrypted_bucket_name)
             if not bucket_info:
-                raise SDKError(f"bucket '{file_upload.bucket_name}' not found during commit")
+                raise SDKError(
+                    f"bucket '{file_upload.bucket_name}' not found during commit"
+                )
 
-            bucket_id_bytes = bytes.fromhex(bucket_info.id) if isinstance(bucket_info.id, str) else bucket_info.id
+            bucket_id_bytes = (
+                bytes.fromhex(bucket_info.id)
+                if isinstance(bucket_info.id, str)
+                else bucket_info.id
+            )
 
             tx_hash = self.ipc.storage.commit_file(
                 bucket_id_bytes,
@@ -873,9 +961,13 @@ class IPC:
             if chunk_dag is None:
                 raise SDKError("build_dag returned None")
 
-            chunk_cid_str = chunk_dag.cid if isinstance(chunk_dag.cid, str) else str(chunk_dag.cid)
+            chunk_cid_str = (
+                chunk_dag.cid if isinstance(chunk_dag.cid, str) else str(chunk_dag.cid)
+            )
 
-            cids, sizes, proto_chunk, error = to_ipc_proto_chunk(chunk_cid_str, index, size, chunk_dag.blocks)
+            cids, sizes, proto_chunk, error = to_ipc_proto_chunk(
+                chunk_cid_str, index, size, chunk_dag.blocks
+            )
 
             if error is not None:
                 raise error
@@ -917,7 +1009,9 @@ class IPC:
         except Exception as err:
             raise SDKError(f"failed to create chunk upload: {str(err)}")
 
-    def upload_chunk(self, ctx, file_chunk_upload: IPCFileChunkUploadV2, pool: ConnectionPool) -> None:
+    def upload_chunk(
+        self, ctx, file_chunk_upload: IPCFileChunkUploadV2, pool: ConnectionPool
+    ) -> None:
         try:
             chunk_cid_str = file_chunk_upload.chunk_cid
             if hasattr(file_chunk_upload.chunk_cid, "string"):
@@ -937,7 +1031,9 @@ class IPC:
                 raise err
 
             # Upload all blocks in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_concurrency
+            ) as executor:
                 futures = {}
 
                 for i, block in enumerate(file_chunk_upload.blocks):
@@ -975,7 +1071,11 @@ class IPC:
         file_name: str,
     ) -> None:
         try:
-            node_address = block.node_address if hasattr(block, "node_address") else block["node_address"]
+            node_address = (
+                block.node_address
+                if hasattr(block, "node_address")
+                else block["node_address"]
+            )
             block_data_bytes = block.data if hasattr(block, "data") else block["data"]
             block_cid = block.cid if hasattr(block, "cid") else block["cid"]
             node_id = block.node_id if hasattr(block, "node_id") else block["node_id"]
@@ -984,9 +1084,13 @@ class IPC:
                 block_data_bytes = bytes(block_data_bytes)
 
             if not node_address or not node_address.strip():
-                raise SDKError(f"Invalid node address for block {block_cid}: '{node_address}'")
+                raise SDKError(
+                    f"Invalid node address for block {block_cid}: '{node_address}'"
+                )
 
-            logging.debug(f"Uploading block {block_index}: CID={block_cid}, node={node_address}")
+            logging.debug(
+                f"Uploading block {block_index}: CID={block_cid}, node={node_address}"
+            )
 
             result = pool.create_ipc_client(node_address, self.use_connection_pool)
 
@@ -997,7 +1101,9 @@ class IPC:
                 if client is None:
                     raise SDKError(f"failed to create client: client is None")
             else:
-                raise SDKError(f"Unexpected return format from create_ipc_client: {result}")
+                raise SDKError(
+                    f"Unexpected return format from create_ipc_client: {result}"
+                )
 
             try:
 
@@ -1014,9 +1120,15 @@ class IPC:
                         if node_id.startswith("12D3"):
                             full_node_id = base58.b58decode(node_id)
                         else:
-                            full_node_id = node_id.encode() if isinstance(node_id, str) else node_id
+                            full_node_id = (
+                                node_id.encode()
+                                if isinstance(node_id, str)
+                                else node_id
+                            )
                     except ImportError:
-                        full_node_id = node_id.encode() if isinstance(node_id, str) else node_id
+                        full_node_id = (
+                            node_id.encode() if isinstance(node_id, str) else node_id
+                        )
 
                     signature_hex, _ = self._create_storage_signature(
                         proto_chunk.cid,
@@ -1076,7 +1188,9 @@ class IPC:
                     try:
                         closer()
                     except Exception as e:
-                        logging.warning(f"Failed to close connection for block {block_cid}: {e}")
+                        logging.warning(
+                            f"Failed to close connection for block {block_cid}: {e}"
+                        )
 
         except Exception as err:
             block_cid = block.cid if hasattr(block, "cid") else block["cid"]
@@ -1118,9 +1232,13 @@ class IPC:
                     decoded = base58.b58decode(node_id)
                     node_id_bytes = decoded
                 else:
-                    node_id_bytes = node_id.encode() if isinstance(node_id, str) else node_id
+                    node_id_bytes = (
+                        node_id.encode() if isinstance(node_id, str) else node_id
+                    )
             except ImportError:
-                node_id_bytes = node_id.encode() if isinstance(node_id, str) else node_id
+                node_id_bytes = (
+                    node_id.encode() if isinstance(node_id, str) else node_id
+                )
 
             chain_id = self.ipc.storage.get_chain_id()
             contract_address = self.ipc.storage.contract_address
@@ -1161,7 +1279,9 @@ class IPC:
                 "nonce": to_int(nonce),
                 "deadline": to_int(deadline),
                 "bucketId": (
-                    bytes(bucket_id) if len(bucket_id) == 32 else bytes(bucket_id) + b"\x00" * (32 - len(bucket_id))
+                    bytes(bucket_id)
+                    if len(bucket_id) == 32
+                    else bytes(bucket_id) + b"\x00" * (32 - len(bucket_id))
                 ),
             }
 
@@ -1171,7 +1291,9 @@ class IPC:
                 key_str = str(self.ipc.auth.key).replace("0x", "")
                 private_key_bytes = bytes.fromhex(key_str)
 
-            signature_bytes = sign(private_key_bytes, domain, "StorageData", data_types, data_message)
+            signature_bytes = sign(
+                private_key_bytes, domain, "StorageData", data_types, data_message
+            )
             signature_hex = signature_bytes.hex()
 
             return signature_hex, nonce_bytes
@@ -1195,7 +1317,9 @@ class IPC:
             if not hasattr(block, "node_address") or not block.node_address:
                 raise SDKError("missing block metadata")
 
-            client, closer, err = pool.create_ipc_client(block.node_address, self.use_connection_pool)
+            client, closer, err = pool.create_ipc_client(
+                block.node_address, self.use_connection_pool
+            )
             if err:
                 raise SDKError(f"failed to create client: {str(err)}")
 
@@ -1227,7 +1351,9 @@ class IPC:
                     try:
                         closer()
                     except Exception as e:
-                        logging.warning(f"Failed to close connection for block {block.cid}: {str(e)}")
+                        logging.warning(
+                            f"Failed to close connection for block {block.cid}: {str(e)}"
+                        )
         except Exception as e:
             raise SDKError(f"failed to fetch block data: {str(e)}")
 
@@ -1239,8 +1365,12 @@ class IPC:
             if not file_name:
                 raise SDKError("empty file name")
 
-            file_name = maybe_encrypt_metadata(file_name, bucket_name + "/" + file_name, self.encryption_key)
-            bucket_name = maybe_encrypt_metadata(bucket_name, bucket_name, self.encryption_key)
+            file_name = maybe_encrypt_metadata(
+                file_name, bucket_name + "/" + file_name, self.encryption_key
+            )
+            bucket_name = maybe_encrypt_metadata(
+                bucket_name, bucket_name, self.encryption_key
+            )
 
             request = ipcnodeapi_pb2.IPCFileDownloadCreateRequest(
                 bucket_name=bucket_name,
@@ -1261,11 +1391,15 @@ class IPC:
                     )
                 )
 
-            return IPCFileDownload(bucket_name=response.bucket_name, name=file_name, chunks=chunks)
+            return IPCFileDownload(
+                bucket_name=response.bucket_name, name=file_name, chunks=chunks
+            )
         except Exception as err:
             raise SDKError(f"failed to create file download: {str(err)}")
 
-    def create_range_file_download(self, ctx, bucket_name: str, file_name: str, start: int, end: int):
+    def create_range_file_download(
+        self, ctx, bucket_name: str, file_name: str, start: int, end: int
+    ):
         try:
             if not bucket_name:
                 raise SDKError("empty bucket name")
@@ -1273,8 +1407,12 @@ class IPC:
             if not file_name:
                 raise SDKError("empty file name")
 
-            file_name = maybe_encrypt_metadata(file_name, bucket_name + "/" + file_name, self.encryption_key)
-            bucket_name = maybe_encrypt_metadata(bucket_name, bucket_name, self.encryption_key)
+            file_name = maybe_encrypt_metadata(
+                file_name, bucket_name + "/" + file_name, self.encryption_key
+            )
+            bucket_name = maybe_encrypt_metadata(
+                bucket_name, bucket_name, self.encryption_key
+            )
 
             request = ipcnodeapi_pb2.IPCFileDownloadRangeCreateRequest(
                 bucket_name=bucket_name,
@@ -1297,11 +1435,15 @@ class IPC:
                     )
                 )
 
-            return IPCFileDownload(bucket_name=response.bucket_name, name=file_name, chunks=chunks)
+            return IPCFileDownload(
+                bucket_name=response.bucket_name, name=file_name, chunks=chunks
+            )
         except Exception as err:
             raise SDKError(f"failed to create range file download: {str(err)}")
 
-    def file_set_public_access(self, ctx, bucket_name: str, file_name: str, is_public: bool) -> None:
+    def file_set_public_access(
+        self, ctx, bucket_name: str, file_name: str, is_public: bool
+    ) -> None:
         try:
             if not bucket_name:
                 raise SDKError("empty bucket name")
@@ -1311,8 +1453,12 @@ class IPC:
             original_file_name = file_name
             original_bucket_name = bucket_name
 
-            file_name = maybe_encrypt_metadata(file_name, bucket_name + "/" + file_name, self.encryption_key)
-            bucket_name = maybe_encrypt_metadata(bucket_name, bucket_name, self.encryption_key)
+            file_name = maybe_encrypt_metadata(
+                file_name, bucket_name + "/" + file_name, self.encryption_key
+            )
+            bucket_name = maybe_encrypt_metadata(
+                bucket_name, bucket_name, self.encryption_key
+            )
 
             bucket_info = self.view_bucket(None, bucket_name)
             if not bucket_info:
@@ -1324,13 +1470,18 @@ class IPC:
             bucket_id = bytes.fromhex(bucket_id_hex)
 
             try:
-                file = self.ipc.storage.get_file_by_name({}, bucket_id, file_name)  # bucket ID
+                file = self.ipc.storage.get_file_by_name(
+                    {}, bucket_id, file_name
+                )  # bucket ID
                 if not file:
                     raise SDKError("failed to retrieve file")
             except Exception as e:
                 raise SDKError(f"failed to get file: {str(e)}")
 
-            if not hasattr(self.ipc, "access_manager") or self.ipc.access_manager is None:
+            if (
+                not hasattr(self.ipc, "access_manager")
+                or self.ipc.access_manager is None
+            ):
                 raise SDKError("access manager not available")
 
             try:
@@ -1342,7 +1493,9 @@ class IPC:
 
                 if hasattr(self.ipc, "wait_for_tx"):
                     self.ipc.wait_for_tx(tx_hash)
-                elif hasattr(self.ipc, "web3") and hasattr(self.ipc.eth.eth, "wait_for_transaction_receipt"):
+                elif hasattr(self.ipc, "web3") and hasattr(
+                    self.ipc.eth.eth, "wait_for_transaction_receipt"
+                ):
                     receipt = self.ipc.eth.eth.wait_for_transaction_receipt(tx_hash)
                     if receipt.status != 1:
                         raise SDKError("ChangePublicAccess transaction failed")
@@ -1362,13 +1515,17 @@ class IPC:
     def download(self, ctx, file_download, writer: io.IOBase):
         pool = ConnectionPool()
         try:
-            file_enc_key = encryption_key(self.encryption_key, file_download.bucket_name, file_download.name)
+            file_enc_key = encryption_key(
+                self.encryption_key, file_download.bucket_name, file_download.name
+            )
 
             for chunk in file_download.chunks:
                 if hasattr(ctx, "done") and ctx.done():
                     raise SDKError("context cancelled")
 
-                chunk_download = self.create_chunk_download(ctx, file_download.bucket_name, file_download.name, chunk)
+                chunk_download = self.create_chunk_download(
+                    ctx, file_download.bucket_name, file_download.name, chunk
+                )
 
                 self.download_chunk_blocks(
                     ctx,
@@ -1435,7 +1592,9 @@ class IPC:
         writer: io.IOBase,
     ):
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_concurrency
+            ) as executor:
                 futures = {}
 
                 for i, block in enumerate(chunk_download.blocks):
@@ -1461,16 +1620,23 @@ class IPC:
                         data = future.result()
                         from .dag import extract_block_data
 
-                        blocks[index] = extract_block_data(chunk_download.blocks[index].cid, data)
+                        blocks[index] = extract_block_data(
+                            chunk_download.blocks[index].cid, data
+                        )
                     except Exception as e:
                         raise SDKError(f"failed to download block: {str(e)}")
 
-            data = b"".join([b for b in blocks if b is not None])
+            if self.erasure_code is not None:
+                data = self.erasure_code.extract_data(blocks, chunk_download.size)
+            else:
+                data = b"".join([b for b in blocks if b is not None])
 
             if file_encryption_key:
                 from private.encryption import decrypt
 
-                data = decrypt(file_encryption_key, data, str(chunk_download.index).encode())
+                data = decrypt(
+                    file_encryption_key, data, str(chunk_download.index).encode()
+                )
 
             writer.write(data)
 
