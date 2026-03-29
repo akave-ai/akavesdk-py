@@ -47,7 +47,12 @@ class Config:
 
     @staticmethod
     def default():
-        return Config(dial_uri="", private_key="", storage_contract_address="", access_contract_address="")
+        return Config(
+            dial_uri="",
+            private_key="",
+            storage_contract_address="",
+            access_contract_address="",
+        )
 
 
 ## [SDK Error Class]
@@ -72,7 +77,7 @@ def validate_hex_string(hex_string: str) -> bool:
 ## [Test Configurations]
 
 DEFAULT_CONFIG_TEST_STREAMING_CONN = {
-    "AKAVE_SDK_NODE": "connect.akave.ai:5000",
+    "AKAVE_SDK_NODE": "connect.akave.ai:5000",  # For streaming operations
     "ENCRYPTION_KEY": "",
 }
 
