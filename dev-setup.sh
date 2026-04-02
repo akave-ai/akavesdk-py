@@ -2,17 +2,25 @@
 
 set -e  # Exit on error
 
+VENV_DIR_DEFAULT=".venv"
+if [ -d "myenv" ] && [ ! -d ".venv" ]; then
+    VENV_DIR_DEFAULT="myenv"
+fi
+VENV_DIR="${VENV_DIR:-$VENV_DIR_DEFAULT}"
+
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
 echo "🚀 Setting up Akave Python SDK development environment..."
 echo ""
 
 echo "📍 Checking Python version..."
-python_version=$(python --version 2>&1 | awk '{print $2}')
+python_version=$($PYTHON_BIN --version 2>&1 | awk '{print $2}')
 echo "✅ Found Python $python_version"
 echo ""
 
-if [ ! -d "myenv" ]; then
+if [ ! -d "$VENV_DIR" ]; then
     echo "📦 Creating virtual environment..."
-    python -m venv myenv
+    $PYTHON_BIN -m venv "$VENV_DIR"
     echo "✅ Virtual environment created"
 else
     echo "✅ Virtual environment already exists"
@@ -21,9 +29,9 @@ echo ""
 
 echo "🔄 Activating virtual environment..."
 if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-    source myenv/Scripts/activate
+    source "$VENV_DIR"/Scripts/activate
 else
-    source myenv/bin/activate
+    source "$VENV_DIR"/bin/activate
 fi
 echo "✅ Virtual environment activated"
 echo ""
@@ -52,8 +60,8 @@ echo ""
 echo "✨ Setup complete! Your development environment is ready."
 echo ""
 echo "To activate the virtual environment, run:"
-echo "  source myenv/bin/activate  (Linux/macOS)"
-echo "  myenv\\Scripts\\activate    (Windows)"
+echo "  source $VENV_DIR/bin/activate  (Linux/macOS)"
+echo "  $VENV_DIR\\Scripts\\activate    (Windows)"
 echo ""
 echo "To run code quality checks, use:"
 echo "  ./run-checks.sh (Linux/macOS)"
